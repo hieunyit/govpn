@@ -1,4 +1,4 @@
-package response
+package http
 
 import (
 	"govpn/pkg/errors"
@@ -36,8 +36,8 @@ type ValidationErrorResponse struct {
 	} `json:"error"`
 }
 
-// Success sends a successful response
-func Success(c *gin.Context, status int, data interface{}) {
+// RespondWithSuccess sends a successful response
+func RespondWithSuccess(c *gin.Context, status int, data interface{}) {
 	response := SuccessResponse{}
 	response.Success.Status = status
 	response.Success.Data = data
@@ -45,8 +45,8 @@ func Success(c *gin.Context, status int, data interface{}) {
 	c.JSON(status, response)
 }
 
-// Message sends a successful response with message
-func Message(c *gin.Context, status int, message string) {
+// RespondWithMessage sends a successful response with message
+func RespondWithMessage(c *gin.Context, status int, message string) {
 	response := SuccessResponse{}
 	response.Success.Status = status
 	response.Success.Message = message
@@ -54,8 +54,8 @@ func Message(c *gin.Context, status int, message string) {
 	c.JSON(status, response)
 }
 
-// Error sends an error response
-func Error(c *gin.Context, err *errors.AppError) {
+// RespondWithError sends an error response
+func RespondWithError(c *gin.Context, err *errors.AppError) {
 	response := ErrorResponse{}
 	response.Error.Code = err.Code
 	response.Error.Message = err.Message
@@ -64,8 +64,8 @@ func Error(c *gin.Context, err *errors.AppError) {
 	c.JSON(err.Status, response)
 }
 
-// ValidationError sends a validation error response
-func ValidationError(c *gin.Context, err error) {
+// RespondWithValidationError sends a validation error response
+func RespondWithValidationError(c *gin.Context, err error) {
 	response := ValidationErrorResponse{}
 	response.Error.Code = "VALIDATION_ERROR"
 	response.Error.Message = "Validation failed"
@@ -111,8 +111,8 @@ func ValidationError(c *gin.Context, err error) {
 	c.JSON(http.StatusBadRequest, response)
 }
 
-// InternalError sends an internal server error response
-func InternalError(c *gin.Context, message string) {
+// RespondWithInternalError sends an internal server error response
+func RespondWithInternalError(c *gin.Context, message string) {
 	response := ErrorResponse{}
 	response.Error.Code = "INTERNAL_SERVER_ERROR"
 	response.Error.Message = message
@@ -121,8 +121,8 @@ func InternalError(c *gin.Context, message string) {
 	c.JSON(http.StatusInternalServerError, response)
 }
 
-// NotFound sends a not found error response
-func NotFound(c *gin.Context, message string) {
+// RespondWithNotFound sends a not found error response
+func RespondWithNotFound(c *gin.Context, message string) {
 	response := ErrorResponse{}
 	response.Error.Code = "NOT_FOUND"
 	response.Error.Message = message
@@ -131,8 +131,8 @@ func NotFound(c *gin.Context, message string) {
 	c.JSON(http.StatusNotFound, response)
 }
 
-// BadRequest sends a bad request error response
-func BadRequest(c *gin.Context, message string) {
+// RespondWithBadRequest sends a bad request error response
+func RespondWithBadRequest(c *gin.Context, message string) {
 	response := ErrorResponse{}
 	response.Error.Code = "BAD_REQUEST"
 	response.Error.Message = message
@@ -141,8 +141,8 @@ func BadRequest(c *gin.Context, message string) {
 	c.JSON(http.StatusBadRequest, response)
 }
 
-// Unauthorized sends an unauthorized error response
-func Unauthorized(c *gin.Context, message string) {
+// RespondWithUnauthorized sends an unauthorized error response
+func RespondWithUnauthorized(c *gin.Context, message string) {
 	response := ErrorResponse{}
 	response.Error.Code = "UNAUTHORIZED"
 	response.Error.Message = message
@@ -151,8 +151,8 @@ func Unauthorized(c *gin.Context, message string) {
 	c.JSON(http.StatusUnauthorized, response)
 }
 
-// Forbidden sends a forbidden error response
-func Forbidden(c *gin.Context, message string) {
+// RespondWithForbidden sends a forbidden error response
+func RespondWithForbidden(c *gin.Context, message string) {
 	response := ErrorResponse{}
 	response.Error.Code = "FORBIDDEN"
 	response.Error.Message = message
@@ -161,8 +161,8 @@ func Forbidden(c *gin.Context, message string) {
 	c.JSON(http.StatusForbidden, response)
 }
 
-// Conflict sends a conflict error response
-func Conflict(c *gin.Context, message string) {
+// RespondWithConflict sends a conflict error response
+func RespondWithConflict(c *gin.Context, message string) {
 	response := ErrorResponse{}
 	response.Error.Code = "CONFLICT"
 	response.Error.Message = message

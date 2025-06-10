@@ -1,0 +1,762 @@
+basePath: /
+definitions:
+  dto.ChangePasswordRequest:
+    properties:
+      password:
+        minLength: 8
+        type: string
+    required:
+    - password
+    type: object
+  dto.CreateGroupRequest:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      authMethod:
+        enum:
+        - ldap
+        - local
+        type: string
+      groupName:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - authMethod
+    - groupName
+    type: object
+  dto.CreateUserRequest:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      authMethod:
+        enum:
+        - ldap
+        - local
+        type: string
+      email:
+        type: string
+      macAddresses:
+        items:
+          type: string
+        type: array
+      password:
+        minLength: 8
+        type: string
+      userExpiration:
+        type: string
+      username:
+        maxLength: 30
+        minLength: 3
+        type: string
+    required:
+    - authMethod
+    - email
+    - macAddresses
+    - userExpiration
+    - username
+    type: object
+  dto.ErrorResponse:
+    properties:
+      error:
+        properties:
+          code:
+            example: BAD_REQUEST
+            type: string
+          message:
+            example: Invalid request format
+            type: string
+          status:
+            example: 400
+            type: integer
+        type: object
+    type: object
+  dto.GroupListResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/dto.GroupResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.GroupResponse:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      authMethod:
+        type: string
+      denyAccess:
+        type: boolean
+      groupName:
+        type: string
+      mfa:
+        type: boolean
+      role:
+        type: string
+    type: object
+  dto.LoginRequest:
+    properties:
+      password:
+        minLength: 1
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  dto.LoginResponse:
+    properties:
+      accessToken:
+        type: string
+      refreshToken:
+        type: string
+      user:
+        $ref: '#/definitions/dto.UserInfo'
+    type: object
+  dto.MessageResponse:
+    properties:
+      success:
+        properties:
+          message:
+            example: Operation completed successfully
+            type: string
+          status:
+            example: 200
+            type: integer
+        type: object
+    type: object
+  dto.RefreshTokenRequest:
+    properties:
+      refreshToken:
+        type: string
+    required:
+    - refreshToken
+    type: object
+  dto.RefreshTokenResponse:
+    properties:
+      accessToken:
+        type: string
+      refreshToken:
+        type: string
+      user:
+        $ref: '#/definitions/dto.UserInfo'
+    type: object
+  dto.UpdateGroupRequest:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      denyAccess:
+        type: boolean
+    type: object
+  dto.UpdateUserRequest:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      denyAccess:
+        type: boolean
+      macAddresses:
+        items:
+          type: string
+        type: array
+      password:
+        minLength: 8
+        type: string
+      userExpiration:
+        type: string
+    type: object
+  dto.UserExpirationResponse:
+    properties:
+      count:
+        type: integer
+      days:
+        type: integer
+      emails:
+        items:
+          type: string
+        type: array
+    type: object
+  dto.UserInfo:
+    properties:
+      email:
+        type: string
+      role:
+        type: string
+      username:
+        type: string
+    type: object
+  dto.UserListResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/dto.UserResponse'
+        type: array
+    type: object
+  dto.UserResponse:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      authMethod:
+        type: string
+      denyAccess:
+        type: boolean
+      email:
+        type: string
+      groupName:
+        type: string
+      macAddresses:
+        items:
+          type: string
+        type: array
+      mfa:
+        type: boolean
+      role:
+        type: string
+      userExpiration:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: OpenVPN Access Server Management API
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: GoVPN API
+  version: "1.0"
+paths:
+  /api/groups:
+    get:
+      description: Get list of groups with optional filtering
+      parameters:
+      - description: Filter by group name
+        in: query
+        name: groupName
+        type: string
+      - description: Filter by auth method
+        in: query
+        name: authMethod
+        type: string
+      - description: Filter by role
+        in: query
+        name: role
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GroupListResponse'
+      security:
+      - BearerAuth: []
+      summary: List groups
+      tags:
+      - Groups
+    post:
+      consumes:
+      - application/json
+      description: Create a new VPN user group
+      parameters:
+      - description: Group creation data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new group
+      tags:
+      - Groups
+  /api/groups/{groupName}:
+    delete:
+      description: Delete a group
+      parameters:
+      - description: Group name
+        in: path
+        name: groupName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete group
+      tags:
+      - Groups
+    get:
+      description: Get detailed information about a group
+      parameters:
+      - description: Group name
+        in: path
+        name: groupName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GroupResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get group by name
+      tags:
+      - Groups
+    put:
+      consumes:
+      - application/json
+      description: Update group information
+      parameters:
+      - description: Group name
+        in: path
+        name: groupName
+        required: true
+        type: string
+      - description: Group update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update group
+      tags:
+      - Groups
+  /api/groups/{groupName}/{action}:
+    put:
+      consumes:
+      - application/json
+      description: Enable or disable a group
+      parameters:
+      - description: Group name
+        in: path
+        name: groupName
+        required: true
+        type: string
+      - description: Action (enable/disable)
+        enum:
+        - enable
+        - disable
+        in: path
+        name: action
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Perform group action
+      tags:
+      - Groups
+  /api/users:
+    get:
+      description: Get list of users with optional filtering
+      parameters:
+      - description: Filter by username
+        in: query
+        name: username
+        type: string
+      - description: Filter by email
+        in: query
+        name: email
+        type: string
+      - description: Filter by auth method
+        in: query
+        name: authMethod
+        type: string
+      - description: Filter by role
+        in: query
+        name: role
+        type: string
+      - description: Filter by group name
+        in: query
+        name: groupName
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserListResponse'
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      description: Create a new VPN user
+      parameters:
+      - description: User creation data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new user
+      tags:
+      - Users
+  /api/users/{username}:
+    delete:
+      description: Delete a user and associated resources
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete user
+      tags:
+      - Users
+    get:
+      description: Get detailed information about a user
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user by username
+      tags:
+      - Users
+    put:
+      consumes:
+      - application/json
+      description: Update user information
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: User update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user
+      tags:
+      - Users
+  /api/users/{username}/{action}:
+    put:
+      consumes:
+      - application/json
+      description: Enable, disable, reset OTP, or change password for a user
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Action (enable/disable/reset-otp/change-password)
+        enum:
+        - enable
+        - disable
+        - reset-otp
+        - change-password
+        in: path
+        name: action
+        required: true
+        type: string
+      - description: Password change data (only for change-password action)
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/dto.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Perform user action
+      tags:
+      - Users
+  /api/users/expirations:
+    get:
+      description: Get list of users expiring in specified days
+      parameters:
+      - default: 0
+        description: Days ahead to check for expiration
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserExpirationResponse'
+      security:
+      - BearerAuth: []
+      summary: Get expiring users
+      tags:
+      - Users
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and return JWT tokens
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: User login
+      tags:
+      - Authentication
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Refresh access token using refresh token
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RefreshTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Refresh access token
+      tags:
+      - Authentication
+  /auth/validate:
+    get:
+      description: Validate the current access token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserInfo'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Validate access token
+      tags:
+      - Authentication
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -22,7 +22,58 @@ logger:
   filePath: "./logs/app.log"
 
 jwt:
-  secret: "AsimGroup"
-  refreshSecret: "AsimGroupRefresh"
+  # RSA Configuration (Recommended for production)
+  useRSA: true
   accessTokenExpireDuration: "1h"
   refreshTokenExpireDuration: "24h"
+  
+  # RSA Private Keys (Base64 encoded PEM format)
+  # Leave empty to auto-generate keys on startup
+  # For production, generate your own keys and store securely
+  accessPrivateKey: ""
+  refreshPrivateKey: ""
+  
+  # Legacy HMAC Configuration (Deprecated - only for backward compatibility)
+  # Only used when useRSA: false
+  secret: "AsimGroup-RSA-Migration-Change-This-Secret"
+  refreshSecret: "AsimGroupRefresh-RSA-Migration-Change-This-Secret"
+
+# Security Settings
+security:
+  # Enable additional security headers
+  enableSecurityHeaders: true
+  
+  # CORS Configuration
+  cors:
+    allowedOrigins: ["http://localhost:3000", "http://localhost:8080"]
+    allowedMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowCredentials: true
+    
+  # Rate Limiting (requests per minute)
+  rateLimit:
+    enabled: true
+    requestsPerMinute: 100
+    
+# Validation Settings
+validation:
+  # MAC Address formats accepted
+  macAddressFormats: ["XX:XX:XX:XX:XX:XX", "XX-XX-XX-XX-XX-XX", "XXXXXXXXXXXX"]
+  
+  # Password requirements for local users
+  password:
+    minLength: 8
+    requireUppercase: false
+    requireLowercase: false 
+    requireNumbers: false
+    requireSpecialChars: false
+    
+# Feature Flags
+features:
+  # Enable advanced user filtering
+  enableAdvancedFiltering: true
+  
+  # Enable user expiration notifications
+  enableExpirationNotifications: true
+  
+  # Enable audit logging
+  enableAuditLogging: true

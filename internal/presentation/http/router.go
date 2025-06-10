@@ -7,6 +7,8 @@ import (
 
 	"github.com/gin-contrib/timeout"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 type Router struct {
@@ -69,6 +71,9 @@ func (r *Router) SetupRoutes() *gin.Engine {
 }
 
 func (r *Router) setupPublicRoutes(router *gin.Engine) {
+	// Swagger endpoint - available without authentication
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// Authentication routes
 	auth := router.Group("/auth")
 	{
@@ -128,6 +133,10 @@ func (r *Router) apiInfo(c *gin.Context) {
 		"version":     "1.0.0",
 		"description": "OpenVPN Access Server Management API",
 		"endpoints": gin.H{
+			"swagger": gin.H{
+				"ui":   "/swagger/index.html",
+				"json": "/swagger/doc.json",
+			},
 			"auth": gin.H{
 				"login":    "POST /auth/login",
 				"refresh":  "POST /auth/refresh",
@@ -151,6 +160,6 @@ func (r *Router) apiInfo(c *gin.Context) {
 				"action": "PUT /api/groups/{groupName}/{action}",
 			},
 		},
-		"documentation": "/docs",
+		"documentation": "/swagger/index.html",
 	})
 }

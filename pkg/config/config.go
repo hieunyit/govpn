@@ -43,8 +43,14 @@ type LoggerConfig struct {
 }
 
 type JWTConfig struct {
-	Secret                     string        `mapstructure:"secret"`
-	RefreshSecret              string        `mapstructure:"refreshSecret"`
+	// Legacy HMAC configuration (deprecated)
+	Secret        string `mapstructure:"secret"`
+	RefreshSecret string `mapstructure:"refreshSecret"`
+
+	// RSA configuration (recommended)
+	UseRSA                     bool          `mapstructure:"useRSA"`
+	AccessPrivateKey           string        `mapstructure:"accessPrivateKey"`
+	RefreshPrivateKey          string        `mapstructure:"refreshPrivateKey"`
 	AccessTokenExpireDuration  time.Duration `mapstructure:"accessTokenExpireDuration"`
 	RefreshTokenExpireDuration time.Duration `mapstructure:"refreshTokenExpireDuration"`
 }
@@ -102,6 +108,11 @@ func setDefaults() {
 	viper.SetDefault("logger.format", "json")
 
 	// JWT defaults
+	viper.SetDefault("jwt.useRSA", true)
 	viper.SetDefault("jwt.accessTokenExpireDuration", time.Hour)
 	viper.SetDefault("jwt.refreshTokenExpireDuration", 24*time.Hour)
+
+	// Legacy HMAC defaults (for backward compatibility)
+	viper.SetDefault("jwt.secret", "default-hmac-secret-change-in-production")
+	viper.SetDefault("jwt.refreshSecret", "default-refresh-secret-change-in-production")
 }

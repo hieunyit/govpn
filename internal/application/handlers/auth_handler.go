@@ -4,7 +4,6 @@ import (
 	"govpn/internal/application/dto"
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/usecases"
-	"govpn/internal/presentation/http"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
@@ -26,26 +25,26 @@ func NewAuthHandler(authUsecase usecases.AuthUsecase) *AuthHandler {
 // Login godoc
 // @Summary User login
 // @Description Authenticate user and return JWT tokens
-// @Tags auth
+// @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body dto.LoginRequest true "Login credentials"
 // @Success 200 {object} dto.LoginResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Router /login [post]
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 401 {object} dto.ErrorResponse
+// @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind login request")
-		http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+		RespondWithError(c, errors.BadRequest("Invalid request format", err))
 		return
 	}
 
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Login request validation failed")
-		http.RespondWithValidationError(c, err)
+		RespondWithValidationError(c, err)
 		return
 	}
 
@@ -59,9 +58,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	tokens, err := h.authUsecase.Login(c.Request.Context(), credentials)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Login failed", err))
+			RespondWithError(c, errors.InternalServerError("Login failed", err))
 		}
 		return
 	}
@@ -78,32 +77,32 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		User:         userInfo,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	RespondWithSuccess(c, nethttp.StatusOK, response)
 }
 
 // RefreshToken godoc
 // @Summary Refresh access token
 // @Description Refresh access token using refresh token
-// @Tags auth
+// @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body dto.RefreshTokenRequest true "Refresh token"
 // @Success 200 {object} dto.RefreshTokenResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Router /refresh [post]
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 401 {object} dto.ErrorResponse
+// @Router /auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req dto.RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind refresh token request")
-		http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+		RespondWithError(c, errors.BadRequest("Invalid request format", err))
 		return
 	}
 
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Refresh token request validation failed")
-		http.RespondWithValidationError(c, err)
+		RespondWithValidationError(c, err)
 		return
 	}
 
@@ -116,9 +115,9 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	tokens, err := h.authUsecase.RefreshToken(c.Request.Context(), refreshReq)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Token refresh failed", err))
+			RespondWithError(c, errors.InternalServerError("Token refresh failed", err))
 		}
 		return
 	}
@@ -135,24 +134,24 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		User:         userInfo,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	RespondWithSuccess(c, nethttp.StatusOK, response)
 }
 
 // ValidateToken godoc
 // @Summary Validate access token
 // @Description Validate the current access token
-// @Tags auth
+// @Tags Authentication
 // @Security BearerAuth
 // @Produce json
 // @Success 200 {object} dto.UserInfo
-// @Failure 401 {object} ErrorResponse
+// @Failure 401 {object} dto.ErrorResponse
 // @Router /auth/validate [get]
 func (h *AuthHandler) ValidateToken(c *gin.Context) {
 	// This endpoint is protected by auth middleware
 	// If we reach here, the token is valid
 	username, exists := c.Get("username")
 	if !exists {
-		http.RespondWithError(c, errors.Unauthorized("Invalid token", nil))
+		RespondWithError(c, errors.Unauthorized("Invalid token", nil))
 		return
 	}
 
@@ -163,5 +162,7 @@ func (h *AuthHandler) ValidateToken(c *gin.Context) {
 		Role:     role.(string),
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, userInfo)
+	RespondWithSuccess(c, nethttp.StatusOK, userInfo)
 }
+
+// Response helper functions are now in response_helpers.go

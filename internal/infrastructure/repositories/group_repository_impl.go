@@ -8,6 +8,7 @@ import (
 	"govpn/internal/infrastructure/xmlrpc"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
+	"strings"
 )
 
 type groupRepositoryImpl struct {
@@ -74,12 +75,52 @@ func (r *groupRepositoryImpl) Delete(ctx context.Context, groupName string) erro
 }
 
 func (r *groupRepositoryImpl) List(ctx context.Context, filter *entities.GroupFilter) ([]*entities.Group, error) {
-	// Note: OpenVPN AS doesn't support filtering, so we get all and filter in memory
-	// This is not optimal for large datasets but works for typical VPN group counts
 	logger.Log.Debug("Listing groups")
 
-	// For now, return empty list as this requires implementing GetAllGroups in XML-RPC client
-	return []*entities.Group{}, nil
+	// Get all groups from OpenVPN AS
+	groups, err := r.groupClient.GetAllGroups()
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get all groups")
+		return nil, fmt.Errorf("failed to get all groups: %w", err)
+	}
+
+	// Apply filters
+	filteredGroups := make([]*entities.Group, 0)
+	for _, group := range groups {
+		if r.matchesFilter(group, filter) {
+			filteredGroups = append(filteredGroups, group)
+		}
+	}
+
+	// Apply pagination
+	start := filter.Offset
+	end := start + filter.Limit
+
+	if start > len(filteredGroups) {
+		return []*entities.Group{}, nil
+	}
+
+	if end > len(filteredGroups) {
+		end = len(filteredGroups)
+	}
+
+	result := filteredGroups[start:end]
+	logger.Log.WithField("total", len(filteredGroups)).WithField("returned", len(result)).Info("Groups listed successfully")
+
+	return result, nil
+}
+
+func (r *groupRepositoryImpl) matchesFilter(group *entities.Group, filter *entities.GroupFilter) bool {
+	if filter.GroupName != "" && !strings.Contains(strings.ToLower(group.GroupName), strings.ToLower(filter.GroupName)) {
+		return false
+	}
+	if filter.AuthMethod != "" && group.AuthMethod != filter.AuthMethod {
+		return false
+	}
+	if filter.Role != "" && group.Role != filter.Role {
+		return false
+	}
+	return true
 }
 
 func (r *groupRepositoryImpl) ExistsByName(ctx context.Context, groupName string) (bool, error) {

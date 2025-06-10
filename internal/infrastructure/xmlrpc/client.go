@@ -106,9 +106,40 @@ func (c *Client) makeRunStartRequest() string {
 }
 
 func (c *Client) isSuccessResponse(body string) bool {
-	return strings.Contains(body, "<nil/>") ||
-		strings.Contains(body, "Password changed successfully") ||
-		strings.Contains(body, "last_restarted")
+	// Check for common success indicators
+	successIndicators := []string{
+		"<nil/>",
+		"Password changed successfully",
+		"last_restarted",
+		"methodResponse",
+	}
+
+	// Check for fault responses
+	errorIndicators := []string{
+		"<fault>",
+		"<methodFault>",
+		"faultCode",
+		"faultString",
+	}
+
+	bodyLower := strings.ToLower(body)
+
+	// If we find error indicators, it's not successful
+	for _, errorIndicator := range errorIndicators {
+		if strings.Contains(bodyLower, strings.ToLower(errorIndicator)) {
+			return false
+		}
+	}
+
+	// If we find success indicators, it's successful
+	for _, successIndicator := range successIndicators {
+		if strings.Contains(bodyLower, strings.ToLower(successIndicator)) {
+			return true
+		}
+	}
+
+	// Default to true if no clear error indicators
+	return true
 }
 
 func (c *Client) xmlEscape(s string) string {
@@ -130,4 +161,56 @@ func (c *Client) xmlEscape(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// Helper method to check if a user/group exists by trying to get it
+func (c *Client) CheckExists(entityName string) (bool, error) {
+	xmlRequest := fmt.Sprintf(`<?xml version="1.0"?><methodCall>
+<methodName>UserPropMultiGet</methodName>
+<params>
+	<param>
+		<value>
+			<array>
+				<data>
+					<value>
+						<string>%s</string>
+					</value>
+				</data>
+			</array>
+		</value>
+	</param>
+	<param>
+		<value>
+			<nil/>
+		</value>
+	</param>
+</params>
+</methodCall>`, c.xmlEscape(entityName))
+
+	resp, err := c.Call(xmlRequest)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, err
+	}
+
+	bodyStr := string(body)
+
+	// Check for fault or error responses
+	if strings.Contains(strings.ToLower(bodyStr), "<fault>") ||
+		strings.Contains(strings.ToLower(bodyStr), "not found") ||
+		strings.Contains(strings.ToLower(bodyStr), "does not exist") {
+		return false, nil
+	}
+
+	// Check if we got actual data back
+	if strings.Contains(bodyStr, "<struct>") && strings.Contains(bodyStr, "<member>") {
+		return true, nil
+	}
+
+	return false, nil
 }

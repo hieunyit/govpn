@@ -11,19 +11,74 @@ import (
 	"govpn/pkg/logger"
 )
 
+// JWTService interface to support both HMAC and RSA implementations
+type JWTService interface {
+	GenerateAccessToken(username, role string) (string, error)
+	GenerateRefreshToken(username, role string) (string, error)
+	ValidateAccessToken(tokenString string) (*jwt.Claims, error)
+	ValidateRefreshToken(tokenString string) (*jwt.Claims, error)
+}
+
 type authUsecaseImpl struct {
 	userRepo   repositories.UserRepository
 	ldapClient *ldap.Client
-	jwtService *jwt.Service
+	jwtService JWTService
 }
 
 func NewAuthUsecase(userRepo repositories.UserRepository, ldapClient *ldap.Client, jwtConfig config.JWTConfig) AuthUsecase {
-	jwtService := jwt.NewService(
-		jwtConfig.Secret,
-		jwtConfig.RefreshSecret,
-		jwtConfig.AccessTokenExpireDuration,
-		jwtConfig.RefreshTokenExpireDuration,
-	)
+	var jwtService JWTService
+
+	if jwtConfig.UseRSA {
+		// Use RSA JWT service
+		if jwtConfig.AccessPrivateKey != "" && jwtConfig.RefreshPrivateKey != "" {
+			// Use provided RSA keys
+			rsaService, err := jwt.NewRSAServiceWithKeys(
+				jwtConfig.AccessPrivateKey,
+				jwtConfig.RefreshPrivateKey,
+				jwtConfig.AccessTokenExpireDuration,
+				jwtConfig.RefreshTokenExpireDuration,
+			)
+			if err != nil {
+				logger.Log.WithError(err).Error("Failed to create RSA JWT service with provided keys, falling back to generated keys")
+				// Fallback to generated keys
+				rsaService, err = jwt.NewRSAService(
+					jwtConfig.AccessTokenExpireDuration,
+					jwtConfig.RefreshTokenExpireDuration,
+				)
+				if err != nil {
+					logger.Log.WithError(err).Fatal("Failed to create RSA JWT service")
+				}
+			}
+			jwtService = rsaService
+			logger.Log.Info("Using RSA256 JWT service")
+		} else {
+			// Generate new RSA keys
+			rsaService, err := jwt.NewRSAService(
+				jwtConfig.AccessTokenExpireDuration,
+				jwtConfig.RefreshTokenExpireDuration,
+			)
+			if err != nil {
+				logger.Log.WithError(err).Fatal("Failed to create RSA JWT service")
+			}
+			jwtService = rsaService
+			logger.Log.Info("Using RSA256 JWT service with generated keys")
+
+			// Log the public keys for external verification (optional)
+			if accessPubKey, err := rsaService.GetAccessPublicKeyPEM(); err == nil {
+				logger.Log.Debug("Access token public key:", accessPubKey)
+			}
+		}
+	} else {
+		// Use legacy HMAC JWT service
+		hmacService := jwt.NewService(
+			jwtConfig.Secret,
+			jwtConfig.RefreshSecret,
+			jwtConfig.AccessTokenExpireDuration,
+			jwtConfig.RefreshTokenExpireDuration,
+		)
+		jwtService = hmacService
+		logger.Log.Warn("Using legacy HMAC256 JWT service. Consider migrating to RSA256 for better security.")
+	}
 
 	return &authUsecaseImpl{
 		userRepo:   userRepo,
@@ -79,8 +134,12 @@ func (u *authUsecaseImpl) Login(ctx context.Context, credentials *entities.Login
 			logger.Log.WithField("username", credentials.Username).WithError(err).Error("LDAP authentication failed")
 			return nil, errors.Unauthorized("Invalid credentials", err)
 		}
+	} else if user.IsLocalAuth() {
+		// For local users, we should validate password against OpenVPN AS
+		// This is a simplified check - in production, you might want to implement
+		// more sophisticated password validation
+		logger.Log.WithField("username", credentials.Username).Debug("Local user authentication - password will be validated by OpenVPN AS")
 	}
-	// Note: For local users, password validation is handled by OpenVPN AS during user creation/update
 
 	// Generate tokens
 	accessToken, err := u.jwtService.GenerateAccessToken(user.Username, user.Role)

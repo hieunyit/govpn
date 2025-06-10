@@ -5,7 +5,6 @@ import (
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/usecases"
 	"govpn/internal/infrastructure/xmlrpc"
-	"govpn/internal/presentation/http"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
@@ -29,30 +28,40 @@ func NewUserHandler(userUsecase usecases.UserUsecase, xmlrpcClient *xmlrpc.Clien
 
 // CreateUser godoc
 // @Summary Create a new user
-// @Description Create a new VPN user
-// @Tags users
+// @Description Create a new VPN user (local or LDAP authentication)
+// @Tags Users
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param request body dto.CreateUserRequest true "User creation data"
-// @Success 201 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
+// @Success 201 {object} dto.MessageResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 409 {object} dto.ErrorResponse
 // @Router /api/users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind create user request")
-		http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+		respondWithError(c, errors.BadRequest("Invalid request format", err))
 		return
 	}
 
-	// Validate request
+	// Enhanced validation for auth-specific requirements
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Create user request validation failed")
-		http.RespondWithValidationError(c, err)
+		respondWithValidationError(c, err)
 		return
 	}
+
+	// Additional validation for auth method specific requirements
+	if err := req.ValidateAuthSpecific(); err != nil {
+		logger.Log.WithError(err).Error("Auth-specific validation failed")
+		respondWithError(c, errors.BadRequest(err.Error(), err))
+		return
+	}
+
+	// Normalize MAC addresses
+	req.MacAddresses = validator.ConvertMAC(req.MacAddresses)
 
 	// Convert DTO to entity
 	user := &entities.User{
@@ -65,12 +74,18 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		AccessControl:  req.AccessControl,
 	}
 
+	// Log the user creation attempt
+	logger.Log.WithField("username", user.Username).
+		WithField("authMethod", user.AuthMethod).
+		WithField("email", user.Email).
+		Info("Creating user")
+
 	// Create user
 	if err := h.userUsecase.CreateUser(c.Request.Context(), user); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to create user", err))
+			respondWithError(c, errors.InternalServerError("Failed to create user", err))
 		}
 		return
 	}
@@ -81,32 +96,35 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		// Don't fail the request, just log the error
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusCreated, "User created successfully")
+	logger.Log.WithField("username", user.Username).Info("User created successfully")
+	respondWithMessage(c, nethttp.StatusCreated, "User created successfully")
 }
 
 // GetUser godoc
 // @Summary Get user by username
 // @Description Get detailed information about a user
-// @Tags users
+// @Tags Users
 // @Security BearerAuth
 // @Produce json
 // @Param username path string true "Username"
 // @Success 200 {object} dto.UserResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/users/{username} [get]
 func (h *UserHandler) GetUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
-		http.RespondWithError(c, errors.BadRequest("Username is required", nil))
+		respondWithError(c, errors.BadRequest("Username is required", nil))
 		return
 	}
+
+	logger.Log.WithField("username", username).Debug("Getting user")
 
 	user, err := h.userUsecase.GetUser(c.Request.Context(), username)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to get user", err))
+			respondWithError(c, errors.InternalServerError("Failed to get user", err))
 		}
 		return
 	}
@@ -125,41 +143,46 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		GroupName:      user.GroupName,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	respondWithSuccess(c, nethttp.StatusOK, response)
 }
 
 // UpdateUser godoc
 // @Summary Update user
 // @Description Update user information
-// @Tags users
+// @Tags Users
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param username path string true "Username"
 // @Param request body dto.UpdateUserRequest true "User update data"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Success 200 {object} dto.MessageResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/users/{username} [put]
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
-		http.RespondWithError(c, errors.BadRequest("Username is required", nil))
+		respondWithError(c, errors.BadRequest("Username is required", nil))
 		return
 	}
 
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind update user request")
-		http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+		respondWithError(c, errors.BadRequest("Invalid request format", err))
 		return
 	}
 
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Update user request validation failed")
-		http.RespondWithValidationError(c, err)
+		respondWithValidationError(c, err)
 		return
+	}
+
+	// Normalize MAC addresses if provided
+	if len(req.MacAddresses) > 0 {
+		req.MacAddresses = validator.ConvertMAC(req.MacAddresses)
 	}
 
 	// Convert DTO to entity
@@ -175,12 +198,18 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		user.SetDenyAccess(*req.DenyAccess)
 	}
 
+	// Log the update attempt
+	logger.Log.WithField("username", username).
+		WithField("hasPassword", req.Password != "").
+		WithField("macAddressCount", len(req.MacAddresses)).
+		Info("Updating user")
+
 	// Update user
 	if err := h.userUsecase.UpdateUser(c.Request.Context(), user); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to update user", err))
+			respondWithError(c, errors.InternalServerError("Failed to update user", err))
 		}
 		return
 	}
@@ -198,30 +227,33 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user update")
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusOK, "User updated successfully")
+	logger.Log.WithField("username", username).Info("User updated successfully")
+	respondWithMessage(c, nethttp.StatusOK, "User updated successfully")
 }
 
 // DeleteUser godoc
 // @Summary Delete user
 // @Description Delete a user and associated resources
-// @Tags users
+// @Tags Users
 // @Security BearerAuth
 // @Param username path string true "Username"
-// @Success 200 {object} SuccessResponse
-// @Failure 404 {object} ErrorResponse
+// @Success 200 {object} dto.MessageResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/users/{username} [delete]
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
-		http.RespondWithError(c, errors.BadRequest("Username is required", nil))
+		respondWithError(c, errors.BadRequest("Username is required", nil))
 		return
 	}
 
+	logger.Log.WithField("username", username).Info("Deleting user")
+
 	if err := h.userUsecase.DeleteUser(c.Request.Context(), username); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to delete user", err))
+			respondWithError(c, errors.InternalServerError("Failed to delete user", err))
 		}
 		return
 	}
@@ -231,36 +263,41 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user deletion")
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusOK, "User deleted successfully")
+	logger.Log.WithField("username", username).Info("User deleted successfully")
+	respondWithMessage(c, nethttp.StatusOK, "User deleted successfully")
 }
 
 // UserAction godoc
 // @Summary Perform user action
 // @Description Enable, disable, reset OTP, or change password for a user
-// @Tags users
+// @Tags Users
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param username path string true "Username"
-// @Param action path string true "Action" Enums(enable,disable,reset-otp,change-password)
+// @Param action path string true "Action (enable/disable/reset-otp/change-password)" Enums(enable, disable, reset-otp, change-password)
 // @Param request body dto.ChangePasswordRequest false "Password change data (only for change-password action)"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Success 200 {object} dto.MessageResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/users/{username}/{action} [put]
 func (h *UserHandler) UserAction(c *gin.Context) {
 	username := c.Param("username")
 	action := c.Param("action")
 
 	if username == "" {
-		http.RespondWithError(c, errors.BadRequest("Username is required", nil))
+		respondWithError(c, errors.BadRequest("Username is required", nil))
 		return
 	}
 
 	if action == "" {
-		http.RespondWithError(c, errors.BadRequest("Action is required", nil))
+		respondWithError(c, errors.BadRequest("Action is required", nil))
 		return
 	}
+
+	logger.Log.WithField("username", username).
+		WithField("action", action).
+		Info("Performing user action")
 
 	var err error
 	var message string
@@ -278,27 +315,27 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 	case "change-password":
 		var req dto.ChangePasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+			respondWithError(c, errors.BadRequest("Invalid request format", err))
 			return
 		}
 
 		if err := validator.Validate(&req); err != nil {
-			http.RespondWithValidationError(c, err)
+			respondWithValidationError(c, err)
 			return
 		}
 
 		err = h.userUsecase.ChangePassword(c.Request.Context(), username, req.Password)
 		message = "Password changed successfully"
 	default:
-		http.RespondWithError(c, errors.BadRequest("Invalid action", nil))
+		respondWithError(c, errors.BadRequest("Invalid action", nil))
 		return
 	}
 
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Action failed", err))
+			respondWithError(c, errors.InternalServerError("Action failed", err))
 		}
 		return
 	}
@@ -308,19 +345,23 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user action")
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusOK, message)
+	logger.Log.WithField("username", username).
+		WithField("action", action).
+		Info("User action completed successfully")
+
+	respondWithMessage(c, nethttp.StatusOK, message)
 }
 
 // ListUsers godoc
 // @Summary List users
 // @Description Get list of users with optional filtering
-// @Tags users
+// @Tags Users
 // @Security BearerAuth
 // @Produce json
 // @Param username query string false "Filter by username"
 // @Param email query string false "Filter by email"
-// @Param authMethod query string false "Filter by auth method"
-// @Param role query string false "Filter by role"
+// @Param authMethod query string false "Filter by auth method (local/ldap)"
+// @Param role query string false "Filter by role (Admin/User)"
 // @Param groupName query string false "Filter by group name"
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(10)
@@ -329,9 +370,17 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 func (h *UserHandler) ListUsers(c *gin.Context) {
 	var filter dto.UserFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
-		http.RespondWithError(c, errors.BadRequest("Invalid query parameters", err))
+		respondWithError(c, errors.BadRequest("Invalid query parameters", err))
 		return
 	}
+
+	// Validate filter parameters
+	if err := validator.Validate(&filter); err != nil {
+		respondWithValidationError(c, err)
+		return
+	}
+
+	logger.Log.WithField("filter", filter).Debug("Listing users")
 
 	// Convert DTO filter to entity filter
 	entityFilter := &entities.UserFilter{
@@ -347,9 +396,9 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	users, err := h.userUsecase.ListUsers(c.Request.Context(), entityFilter)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to list users", err))
+			respondWithError(c, errors.InternalServerError("Failed to list users", err))
 		}
 		return
 	}
@@ -378,13 +427,17 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		Limit: filter.Limit,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	logger.Log.WithField("totalUsers", len(userResponses)).
+		WithField("page", filter.Page).
+		Info("Users listed successfully")
+
+	respondWithSuccess(c, nethttp.StatusOK, response)
 }
 
 // GetUserExpirations godoc
 // @Summary Get expiring users
 // @Description Get list of users expiring in specified days
-// @Tags users
+// @Tags Users
 // @Security BearerAuth
 // @Produce json
 // @Param days query int false "Days ahead to check for expiration" default(0)
@@ -394,16 +447,18 @@ func (h *UserHandler) GetUserExpirations(c *gin.Context) {
 	daysStr := c.DefaultQuery("days", "0")
 	days, err := strconv.Atoi(daysStr)
 	if err != nil || days < 0 {
-		http.RespondWithError(c, errors.BadRequest("Invalid days parameter", err))
+		respondWithError(c, errors.BadRequest("Invalid days parameter", err))
 		return
 	}
+
+	logger.Log.WithField("days", days).Info("Getting expiring users")
 
 	emails, err := h.userUsecase.GetExpiringUsers(c.Request.Context(), days)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			respondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to get expiring users", err))
+			respondWithError(c, errors.InternalServerError("Failed to get expiring users", err))
 		}
 		return
 	}
@@ -414,5 +469,11 @@ func (h *UserHandler) GetUserExpirations(c *gin.Context) {
 		Days:   days,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	logger.Log.WithField("count", len(emails)).
+		WithField("days", days).
+		Info("Expiring users retrieved successfully")
+
+	respondWithSuccess(c, nethttp.StatusOK, response)
 }
+
+// Response helper functions are now in response_helpers.go

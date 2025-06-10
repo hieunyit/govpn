@@ -65,6 +65,27 @@ func (c *UserClient) GetUser(username string) (*entities.User, error) {
 	return c.parseUserResponse(username, body)
 }
 
+func (c *UserClient) GetAllUsers() ([]*entities.User, error) {
+	xmlRequest := c.makeGetAllUsersRequest()
+
+	resp, err := c.Call(xmlRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return c.parseAllUsersResponse(body)
+}
+
 func (c *UserClient) UpdateUser(user *entities.User) error {
 	xmlRequest := c.makeUpdateUserRequest(user)
 
@@ -412,12 +433,22 @@ func (c *UserClient) makeGetAllUsersRequest() string {
 			<nil/>
 		</value>
 	</param>
+	<param>
+		<value>
+			<nil/>
+		</value>
+	</param>
 </params>
 </methodCall>`
 }
 
 // Response parsers
 func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.User, error) {
+	// Check if response contains error
+	if strings.Contains(string(body), "<fault>") || strings.Contains(string(body), "User not found") {
+		return nil, fmt.Errorf("user not found: %s", username)
+	}
+
 	var userData struct {
 		Members []struct {
 			Name  string `xml:"name"`
@@ -428,6 +459,11 @@ func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.
 	err := xml.NewDecoder(bytes.NewReader(body)).Decode(&userData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode XML: %w", err)
+	}
+
+	// If no members found, user doesn't exist
+	if len(userData.Members) == 0 {
+		return nil, fmt.Errorf("user not found: %s", username)
 	}
 
 	user := &entities.User{
@@ -443,7 +479,9 @@ func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.
 				return nil, fmt.Errorf("not a user entity")
 			}
 		case strings.HasPrefix(member.Name, "pvt_hw_addr"):
-			user.MacAddresses = append(user.MacAddresses, member.Value)
+			if member.Value != "" {
+				user.MacAddresses = append(user.MacAddresses, member.Value)
+			}
 		case member.Name == "user_auth_type":
 			user.AuthMethod = member.Value
 		case member.Name == "conn_group":
@@ -466,6 +504,82 @@ func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.
 	}
 
 	return user, nil
+}
+
+func (c *UserClient) parseAllUsersResponse(body []byte) ([]*entities.User, error) {
+	var xmlUserData struct {
+		Members []struct {
+			UserName string `xml:"name"`
+			Members  []struct {
+				Name  string `xml:"name"`
+				Value string `xml:"value>string"`
+			} `xml:"value>struct>member"`
+		} `xml:"params>param>value>struct>member"`
+	}
+
+	err := xml.NewDecoder(bytes.NewReader(body)).Decode(&xmlUserData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode XML: %w", err)
+	}
+
+	users := make([]*entities.User, 0)
+	for _, userMember := range xmlUserData.Members {
+		username := userMember.UserName
+		if username == "" {
+			continue
+		}
+
+		user := &entities.User{
+			Username:   username,
+			DenyAccess: "false",
+			Role:       entities.UserRoleUser,
+		}
+
+		// Check if this is actually a user (not a group)
+		isUser := false
+		for _, data := range userMember.Members {
+			if data.Name == "type" && (data.Value == "user_connect" || data.Value == "user_compile") {
+				isUser = true
+				break
+			}
+		}
+
+		if !isUser {
+			continue
+		}
+
+		// Parse user data
+		for _, data := range userMember.Members {
+			switch {
+			case strings.HasPrefix(data.Name, "pvt_hw_addr"):
+				if data.Value != "" {
+					user.MacAddresses = append(user.MacAddresses, data.Value)
+				}
+			case data.Name == "user_auth_type":
+				user.AuthMethod = data.Value
+			case data.Name == "conn_group":
+				user.GroupName = data.Value
+			case data.Name == "prop_google_auth":
+				user.MFA = data.Value
+			case data.Name == "prop_deny":
+				user.DenyAccess = data.Value
+			case data.Name == "email":
+				user.Email = data.Value
+			case data.Name == "user_expiration":
+				user.UserExpiration = data.Value
+			case data.Name == "prop_superuser":
+				if data.Value == "true" {
+					user.Role = entities.UserRoleAdmin
+				}
+			case strings.HasPrefix(data.Name, "access_to"):
+				user.AccessControl = append(user.AccessControl, strings.TrimPrefix(data.Value, "+NAT:"))
+			}
+		}
+
+		users = append(users, user)
+	}
+
+	return users, nil
 }
 
 func (c *UserClient) parseExpiringUsers(body io.Reader, days int) ([]string, error) {

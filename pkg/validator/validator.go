@@ -20,8 +20,9 @@ func init() {
 	// Register custom validations
 	validate.RegisterValidation("username", validateUsername)
 	validate.RegisterValidation("date", validateDate)
-	validate.RegisterValidation("hex16", validateHex16)
+	validate.RegisterValidation("mac_address", validateMACAddress)
 	validate.RegisterValidation("ipv4_protocol", validateIPProtocol)
+	validate.RegisterValidation("password_if_local", validatePasswordIfLocal)
 }
 
 func Validate(s interface{}) error {
@@ -40,6 +41,9 @@ func validateUsername(fl validator.FieldLevel) bool {
 
 func validateDate(fl validator.FieldLevel) bool {
 	dateStr := fl.Field().String()
+	if dateStr == "" {
+		return true // Allow empty dates for optional fields
+	}
 	date, err := time.Parse("02/01/2006", dateStr)
 	if err != nil {
 		return false
@@ -47,10 +51,25 @@ func validateDate(fl validator.FieldLevel) bool {
 	return date.After(time.Now())
 }
 
-func validateHex16(fl validator.FieldLevel) bool {
+// Updated MAC address validation to support multiple formats
+func validateMACAddress(fl validator.FieldLevel) bool {
 	value := fl.Field().String()
-	hexPattern := regexp.MustCompile("^[0-9a-fA-F]{16}$")
-	return hexPattern.MatchString(value)
+
+	// Remove common separators and convert to lowercase
+	cleanMAC := strings.ToLower(value)
+	cleanMAC = strings.ReplaceAll(cleanMAC, ":", "")
+	cleanMAC = strings.ReplaceAll(cleanMAC, "-", "")
+	cleanMAC = strings.ReplaceAll(cleanMAC, ".", "")
+	cleanMAC = strings.ReplaceAll(cleanMAC, " ", "")
+
+	// Check if it's exactly 12 hex characters
+	if len(cleanMAC) != 12 {
+		return false
+	}
+
+	// Check if all characters are hex
+	hexPattern := regexp.MustCompile("^[0-9a-f]{12}$")
+	return hexPattern.MatchString(cleanMAC)
 }
 
 func validateIPProtocol(fl validator.FieldLevel) bool {
@@ -103,6 +122,33 @@ func validateIPProtocol(fl validator.FieldLevel) bool {
 	return true
 }
 
+// Custom validation for password requirement based on auth method
+func validatePasswordIfLocal(fl validator.FieldLevel) bool {
+	// Get the struct containing this field
+	parent := fl.Parent()
+
+	// Get the authMethod field
+	authMethodField := parent.FieldByName("AuthMethod")
+	if !authMethodField.IsValid() {
+		return true // If authMethod not found, skip validation
+	}
+
+	authMethod := authMethodField.String()
+	password := fl.Field().String()
+
+	// If auth method is local, password is required
+	if authMethod == "local" && password == "" {
+		return false
+	}
+
+	// If password is provided, it should meet minimum requirements
+	if password != "" && len(password) < 8 {
+		return false
+	}
+
+	return true
+}
+
 func isValidIP(ip string) bool {
 	_, _, err := net.ParseCIDR(ip)
 	if err != nil {
@@ -140,12 +186,46 @@ func ValidateAndFixIPs(ips []string) ([]string, error) {
 	return resultIPs, nil
 }
 
+// Updated MAC address conversion to handle multiple formats
 func ConvertMAC(macAddresses []string) []string {
 	var result []string
-	for _, str := range macAddresses {
-		lowerCaseStr := strings.ToLower(str)
-		convertedStr := strings.ReplaceAll(lowerCaseStr, "-", ":")
-		result = append(result, convertedStr)
+	for _, mac := range macAddresses {
+		// Remove all separators and convert to lowercase
+		cleanMAC := strings.ToLower(mac)
+		cleanMAC = strings.ReplaceAll(cleanMAC, ":", "")
+		cleanMAC = strings.ReplaceAll(cleanMAC, "-", "")
+		cleanMAC = strings.ReplaceAll(cleanMAC, ".", "")
+		cleanMAC = strings.ReplaceAll(cleanMAC, " ", "")
+
+		// Convert to standard format XX:XX:XX:XX:XX:XX
+		if len(cleanMAC) == 12 {
+			standardMAC := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+				cleanMAC[0:2], cleanMAC[2:4], cleanMAC[4:6],
+				cleanMAC[6:8], cleanMAC[8:10], cleanMAC[10:12])
+			result = append(result, standardMAC)
+		} else {
+			// If invalid format, keep original
+			result = append(result, mac)
+		}
 	}
 	return result
+}
+
+// Normalize MAC address to standard format
+func NormalizeMACAddress(mac string) string {
+	// Remove all separators and convert to lowercase
+	cleanMAC := strings.ToLower(mac)
+	cleanMAC = strings.ReplaceAll(cleanMAC, ":", "")
+	cleanMAC = strings.ReplaceAll(cleanMAC, "-", "")
+	cleanMAC = strings.ReplaceAll(cleanMAC, ".", "")
+	cleanMAC = strings.ReplaceAll(cleanMAC, " ", "")
+
+	// Convert to standard format XX:XX:XX:XX:XX:XX
+	if len(cleanMAC) == 12 {
+		return fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+			cleanMAC[0:2], cleanMAC[2:4], cleanMAC[4:6],
+			cleanMAC[6:8], cleanMAC[8:10], cleanMAC[10:12])
+	}
+
+	return mac // Return original if invalid
 }

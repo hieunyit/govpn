@@ -64,6 +64,27 @@ func (c *GroupClient) GetGroup(groupName string) (*entities.Group, error) {
 	return c.parseGroupResponse(groupName, body)
 }
 
+func (c *GroupClient) GetAllGroups() ([]*entities.Group, error) {
+	xmlRequest := c.makeGetAllGroupsRequest()
+
+	resp, err := c.Call(xmlRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all groups: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return c.parseAllGroupsResponse(body)
+}
+
 func (c *GroupClient) UpdateGroup(group *entities.Group) error {
 	xmlRequest := c.makeUpdateGroupRequest(group)
 
@@ -187,19 +208,19 @@ func (c *GroupClient) makeCreateGroupRequest(group *entities.Group) string {
 	buf.WriteString(`<param><value><struct>`)
 
 	if group.AuthMethod != "" {
-		buf.WriteString(`<member><name>user_auth_type</name><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
+		buf.WriteString(`<member><n>user_auth_type</n><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
 	}
 
 	// Access control
 	for i, accessControl := range group.AccessControl {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		accessValue := "+SUBNET:" + accessControl
-		buf.WriteString(`<member><name>` + c.xmlEscape(accessName) + `</name><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
+		buf.WriteString(`<member><n>` + c.xmlEscape(accessName) + `</n><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
 	}
 
-	buf.WriteString(`<member><name>type</name><value><string>group</string></value></member>`)
-	buf.WriteString(`<member><name>group_declare</name><value><string>true</string></value></member>`)
-	buf.WriteString(`<member><name>prop_google_auth</name><value><string>true</string></value></member>`)
+	buf.WriteString(`<member><n>type</n><value><string>group</string></value></member>`)
+	buf.WriteString(`<member><n>group_declare</n><value><string>true</string></value></member>`)
+	buf.WriteString(`<member><n>prop_google_auth</n><value><string>true</string></value></member>`)
 	buf.WriteString(`</struct></value></param>`)
 	buf.WriteString(`<param><value><boolean>0</boolean></value></param>`)
 	buf.WriteString(`</params></methodCall>`)
@@ -231,6 +252,24 @@ func (c *GroupClient) makeGetGroupRequest(groupName string) string {
 </methodCall>`, c.xmlEscape(groupName))
 }
 
+func (c *GroupClient) makeGetAllGroupsRequest() string {
+	return `<?xml version="1.0"?><methodCall>
+<methodName>UserPropMultiGet</methodName>
+<params>
+	<param>
+		<value>
+			<nil/>
+		</value>
+	</param>
+	<param>
+		<value>
+			<nil/>
+		</value>
+	</param>
+</params>
+</methodCall>`
+}
+
 func (c *GroupClient) makeUpdateGroupRequest(group *entities.Group) string {
 	var buf bytes.Buffer
 
@@ -243,14 +282,14 @@ func (c *GroupClient) makeUpdateGroupRequest(group *entities.Group) string {
 	for i, accessControl := range group.AccessControl {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		accessValue := "+SUBNET:" + accessControl
-		buf.WriteString(`<member><name>` + c.xmlEscape(accessName) + `</name><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
+		buf.WriteString(`<member><n>` + c.xmlEscape(accessName) + `</n><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
 	}
 
 	if group.AuthMethod != "" {
-		buf.WriteString(`<member><name>user_auth_type</name><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
+		buf.WriteString(`<member><n>user_auth_type</n><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
 	}
 	if group.DenyAccess != "" {
-		buf.WriteString(`<member><name>prop_deny</name><value><string>` + c.xmlEscape(group.DenyAccess) + `</string></value></member>`)
+		buf.WriteString(`<member><n>prop_deny</n><value><string>` + c.xmlEscape(group.DenyAccess) + `</string></value></member>`)
 	}
 
 	buf.WriteString(`</struct></value></param>`)
@@ -286,7 +325,7 @@ func (c *GroupClient) makeGroupPropertyRequest(groupName, property, value string
 		<value>
 			<struct>
 				<member>
-					<name>%s</name>
+					<n>%s</n>
 					<value>
 						<string>%s</string>
 					</value>
@@ -324,6 +363,11 @@ func (c *GroupClient) makeClearAccessControlRequest(group *entities.Group) strin
 
 // Response parsers
 func (c *GroupClient) parseGroupResponse(groupName string, body []byte) (*entities.Group, error) {
+	// Check if response contains error
+	if strings.Contains(string(body), "<fault>") || strings.Contains(string(body), "not found") {
+		return nil, fmt.Errorf("group not found: %s", groupName)
+	}
+
 	var groupData struct {
 		Members []struct {
 			Name  string `xml:"name"`
@@ -334,6 +378,11 @@ func (c *GroupClient) parseGroupResponse(groupName string, body []byte) (*entiti
 	err := xml.NewDecoder(bytes.NewReader(body)).Decode(&groupData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode XML: %w", err)
+	}
+
+	// If no members found, group doesn't exist
+	if len(groupData.Members) == 0 {
+		return nil, fmt.Errorf("group not found: %s", groupName)
 	}
 
 	group := &entities.Group{
@@ -364,4 +413,70 @@ func (c *GroupClient) parseGroupResponse(groupName string, body []byte) (*entiti
 	}
 
 	return group, nil
+}
+
+func (c *GroupClient) parseAllGroupsResponse(body []byte) ([]*entities.Group, error) {
+	var xmlGroupData struct {
+		Members []struct {
+			GroupName string `xml:"name"`
+			Members   []struct {
+				Name  string `xml:"name"`
+				Value string `xml:"value>string"`
+			} `xml:"value>struct>member"`
+		} `xml:"params>param>value>struct>member"`
+	}
+
+	err := xml.NewDecoder(bytes.NewReader(body)).Decode(&xmlGroupData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode XML: %w", err)
+	}
+
+	groups := make([]*entities.Group, 0)
+	for _, groupMember := range xmlGroupData.Members {
+		groupName := groupMember.GroupName
+		if groupName == "" {
+			continue
+		}
+
+		group := &entities.Group{
+			GroupName:  groupName,
+			DenyAccess: "false",
+			Role:       entities.UserRoleUser,
+		}
+
+		// Check if this is actually a group (not a user)
+		isGroup := false
+		for _, data := range groupMember.Members {
+			if data.Name == "type" && data.Value == "group" {
+				isGroup = true
+				break
+			}
+		}
+
+		if !isGroup {
+			continue
+		}
+
+		// Parse group data
+		for _, data := range groupMember.Members {
+			switch {
+			case strings.HasPrefix(data.Name, "access_to"):
+				group.AccessControl = append(group.AccessControl, strings.TrimPrefix(data.Value, "+SUBNET:"))
+			case data.Name == "user_auth_type":
+				group.AuthMethod = data.Value
+			case data.Name == "prop_google_auth":
+				group.MFA = data.Value
+			case data.Name == "prop_deny":
+				group.DenyAccess = data.Value
+			case data.Name == "prop_superuser":
+				if data.Value == "true" {
+					group.Role = entities.UserRoleAdmin
+				}
+			}
+		}
+
+		groups = append(groups, group)
+	}
+
+	return groups, nil
 }

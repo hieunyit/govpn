@@ -8,6 +8,7 @@ import (
 	"govpn/internal/infrastructure/xmlrpc"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
+	"strings"
 )
 
 type userRepositoryImpl struct {
@@ -84,13 +85,58 @@ func (r *userRepositoryImpl) Delete(ctx context.Context, username string) error 
 }
 
 func (r *userRepositoryImpl) List(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, error) {
-	// Note: OpenVPN AS doesn't support filtering, so we get all and filter in memory
-	// This is not optimal for large datasets but works for typical VPN user counts
 	logger.Log.Debug("Listing users")
 
-	// For now, return empty list as this requires implementing GetAllUsers in XML-RPC client
-	// This can be implemented similar to GetExpiringUsers but returns all user data
-	return []*entities.User{}, nil
+	// Get all users from OpenVPN AS
+	users, err := r.userClient.GetAllUsers()
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get all users")
+		return nil, fmt.Errorf("failed to get all users: %w", err)
+	}
+
+	// Apply filters
+	filteredUsers := make([]*entities.User, 0)
+	for _, user := range users {
+		if r.matchesFilter(user, filter) {
+			filteredUsers = append(filteredUsers, user)
+		}
+	}
+
+	// Apply pagination
+	start := filter.Offset
+	end := start + filter.Limit
+
+	if start > len(filteredUsers) {
+		return []*entities.User{}, nil
+	}
+
+	if end > len(filteredUsers) {
+		end = len(filteredUsers)
+	}
+
+	result := filteredUsers[start:end]
+	logger.Log.WithField("total", len(filteredUsers)).WithField("returned", len(result)).Info("Users listed successfully")
+
+	return result, nil
+}
+
+func (r *userRepositoryImpl) matchesFilter(user *entities.User, filter *entities.UserFilter) bool {
+	if filter.Username != "" && !strings.Contains(strings.ToLower(user.Username), strings.ToLower(filter.Username)) {
+		return false
+	}
+	if filter.Email != "" && !strings.Contains(strings.ToLower(user.Email), strings.ToLower(filter.Email)) {
+		return false
+	}
+	if filter.AuthMethod != "" && user.AuthMethod != filter.AuthMethod {
+		return false
+	}
+	if filter.Role != "" && user.Role != filter.Role {
+		return false
+	}
+	if filter.GroupName != "" && user.GroupName != filter.GroupName {
+		return false
+	}
+	return true
 }
 
 func (r *userRepositoryImpl) ExistsByUsername(ctx context.Context, username string) (bool, error) {

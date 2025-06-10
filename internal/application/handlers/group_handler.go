@@ -5,7 +5,6 @@ import (
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/usecases"
 	"govpn/internal/infrastructure/xmlrpc"
-	"govpn/internal/presentation/http"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
@@ -29,27 +28,27 @@ func NewGroupHandler(groupUsecase usecases.GroupUsecase, xmlrpcClient *xmlrpc.Cl
 // CreateGroup godoc
 // @Summary Create a new group
 // @Description Create a new VPN user group
-// @Tags groups
+// @Tags Groups
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param request body dto.CreateGroupRequest true "Group creation data"
-// @Success 201 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
+// @Success 201 {object} dto.MessageResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 409 {object} dto.ErrorResponse
 // @Router /api/groups [post]
 func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	var req dto.CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind create group request")
-		http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+		RespondWithError(c, errors.BadRequest("Invalid request format", err))
 		return
 	}
 
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Create group request validation failed")
-		http.RespondWithValidationError(c, err)
+		RespondWithValidationError(c, err)
 		return
 	}
 
@@ -63,9 +62,9 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	// Create group
 	if err := h.groupUsecase.CreateGroup(c.Request.Context(), group); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to create group", err))
+			RespondWithError(c, errors.InternalServerError("Failed to create group", err))
 		}
 		return
 	}
@@ -76,32 +75,32 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		// Don't fail the request, just log the error
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusCreated, "Group created successfully")
+	RespondWithMessage(c, nethttp.StatusCreated, "Group created successfully")
 }
 
 // GetGroup godoc
 // @Summary Get group by name
 // @Description Get detailed information about a group
-// @Tags groups
+// @Tags Groups
 // @Security BearerAuth
 // @Produce json
 // @Param groupName path string true "Group name"
 // @Success 200 {object} dto.GroupResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName} [get]
 func (h *GroupHandler) GetGroup(c *gin.Context) {
 	groupName := c.Param("groupName")
 	if groupName == "" {
-		http.RespondWithError(c, errors.BadRequest("Group name is required", nil))
+		RespondWithError(c, errors.BadRequest("Group name is required", nil))
 		return
 	}
 
 	group, err := h.groupUsecase.GetGroup(c.Request.Context(), groupName)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to get group", err))
+			RespondWithError(c, errors.InternalServerError("Failed to get group", err))
 		}
 		return
 	}
@@ -116,40 +115,40 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 		AccessControl: group.AccessControl,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	RespondWithSuccess(c, nethttp.StatusOK, response)
 }
 
 // UpdateGroup godoc
 // @Summary Update group
 // @Description Update group information
-// @Tags groups
+// @Tags Groups
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param groupName path string true "Group name"
 // @Param request body dto.UpdateGroupRequest true "Group update data"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Success 200 {object} dto.MessageResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName} [put]
 func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 	groupName := c.Param("groupName")
 	if groupName == "" {
-		http.RespondWithError(c, errors.BadRequest("Group name is required", nil))
+		RespondWithError(c, errors.BadRequest("Group name is required", nil))
 		return
 	}
 
 	var req dto.UpdateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind update group request")
-		http.RespondWithError(c, errors.BadRequest("Invalid request format", err))
+		RespondWithError(c, errors.BadRequest("Invalid request format", err))
 		return
 	}
 
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Update group request validation failed")
-		http.RespondWithValidationError(c, err)
+		RespondWithValidationError(c, err)
 		return
 	}
 
@@ -166,9 +165,9 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 	// Update group
 	if err := h.groupUsecase.UpdateGroup(c.Request.Context(), group); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to update group", err))
+			RespondWithError(c, errors.InternalServerError("Failed to update group", err))
 		}
 		return
 	}
@@ -178,30 +177,30 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group update")
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusOK, "Group updated successfully")
+	RespondWithMessage(c, nethttp.StatusOK, "Group updated successfully")
 }
 
 // DeleteGroup godoc
 // @Summary Delete group
 // @Description Delete a group
-// @Tags groups
+// @Tags Groups
 // @Security BearerAuth
 // @Param groupName path string true "Group name"
-// @Success 200 {object} SuccessResponse
-// @Failure 404 {object} ErrorResponse
+// @Success 200 {object} dto.MessageResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName} [delete]
 func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 	groupName := c.Param("groupName")
 	if groupName == "" {
-		http.RespondWithError(c, errors.BadRequest("Group name is required", nil))
+		RespondWithError(c, errors.BadRequest("Group name is required", nil))
 		return
 	}
 
 	if err := h.groupUsecase.DeleteGroup(c.Request.Context(), groupName); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to delete group", err))
+			RespondWithError(c, errors.InternalServerError("Failed to delete group", err))
 		}
 		return
 	}
@@ -211,33 +210,33 @@ func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group deletion")
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusOK, "Group deleted successfully")
+	RespondWithMessage(c, nethttp.StatusOK, "Group deleted successfully")
 }
 
 // GroupAction godoc
 // @Summary Perform group action
 // @Description Enable or disable a group
-// @Tags groups
+// @Tags Groups
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param groupName path string true "Group name"
-// @Param action path string true "Action" Enums(enable,disable)
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Param action path string true "Action (enable/disable)" Enums(enable, disable)
+// @Success 200 {object} dto.MessageResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName}/{action} [put]
 func (h *GroupHandler) GroupAction(c *gin.Context) {
 	groupName := c.Param("groupName")
 	action := c.Param("action")
 
 	if groupName == "" {
-		http.RespondWithError(c, errors.BadRequest("Group name is required", nil))
+		RespondWithError(c, errors.BadRequest("Group name is required", nil))
 		return
 	}
 
 	if action == "" {
-		http.RespondWithError(c, errors.BadRequest("Action is required", nil))
+		RespondWithError(c, errors.BadRequest("Action is required", nil))
 		return
 	}
 
@@ -252,15 +251,15 @@ func (h *GroupHandler) GroupAction(c *gin.Context) {
 		err = h.groupUsecase.DisableGroup(c.Request.Context(), groupName)
 		message = "Group disabled successfully"
 	default:
-		http.RespondWithError(c, errors.BadRequest("Invalid action", nil))
+		RespondWithError(c, errors.BadRequest("Invalid action", nil))
 		return
 	}
 
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Action failed", err))
+			RespondWithError(c, errors.InternalServerError("Action failed", err))
 		}
 		return
 	}
@@ -270,13 +269,13 @@ func (h *GroupHandler) GroupAction(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group action")
 	}
 
-	http.RespondWithMessage(c, nethttp.StatusOK, message)
+	RespondWithMessage(c, nethttp.StatusOK, message)
 }
 
 // ListGroups godoc
 // @Summary List groups
 // @Description Get list of groups with optional filtering
-// @Tags groups
+// @Tags Groups
 // @Security BearerAuth
 // @Produce json
 // @Param groupName query string false "Filter by group name"
@@ -289,7 +288,7 @@ func (h *GroupHandler) GroupAction(c *gin.Context) {
 func (h *GroupHandler) ListGroups(c *gin.Context) {
 	var filter dto.GroupFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
-		http.RespondWithError(c, errors.BadRequest("Invalid query parameters", err))
+		RespondWithError(c, errors.BadRequest("Invalid query parameters", err))
 		return
 	}
 
@@ -305,9 +304,9 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 	groups, err := h.groupUsecase.ListGroups(c.Request.Context(), entityFilter)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
-			http.RespondWithError(c, appErr)
+			RespondWithError(c, appErr)
 		} else {
-			http.RespondWithError(c, errors.InternalServerError("Failed to list groups", err))
+			RespondWithError(c, errors.InternalServerError("Failed to list groups", err))
 		}
 		return
 	}
@@ -332,5 +331,7 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 		Limit:  filter.Limit,
 	}
 
-	http.RespondWithSuccess(c, nethttp.StatusOK, response)
+	RespondWithSuccess(c, nethttp.StatusOK, response)
 }
+
+// Response helper functions are now in response_helpers.go
