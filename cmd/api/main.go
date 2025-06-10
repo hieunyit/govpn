@@ -1,6 +1,6 @@
-// @title           GoVPN API
-// @version         1.0
-// @description     OpenVPN Access Server Management API with RSA256 JWT
+// @title           GoVPN API Enhanced
+// @version         1.1.0
+// @description     OpenVPN Access Server Management API with Bulk Operations and Advanced Search
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -66,6 +66,10 @@ func main() {
 	}
 	logger.Init(loggerConfig)
 
+	// Log startup information
+	logger.Log.Info("Starting GoVPN API Enhanced v1.1.0")
+	logger.Log.Info("New Features: Bulk Operations, Advanced Search, File Import/Export")
+
 	// Log JWT configuration mode
 	if cfg.JWT.UseRSA {
 		logger.Log.Info("Starting GoVPN API with RSA256 JWT authentication")
@@ -106,6 +110,10 @@ func main() {
 	userUsecase := usecases.NewUserUsecase(userRepo, groupRepo, ldapClient)
 	groupUsecase := usecases.NewGroupUsecase(groupRepo)
 
+	// NEW: Initialize bulk and search use cases
+	bulkUsecase := usecases.NewBulkUsecase(userRepo, groupRepo, ldapClient)
+	searchUsecase := usecases.NewSearchUsecase(userRepo, groupRepo)
+
 	// Initialize middleware with shared JWT service
 	authMiddleware := middleware.NewAuthMiddlewareWithJWTService(jwtService)
 	corsMiddleware := middleware.NewCorsMiddleware()
@@ -115,11 +123,17 @@ func main() {
 	userHandler := handlers.NewUserHandler(userUsecase, xmlrpcClient)
 	groupHandler := handlers.NewGroupHandler(groupUsecase, xmlrpcClient)
 
-	// Initialize router
-	router := httpRouter.NewRouter(
+	// NEW: Initialize bulk and search handlers
+	bulkHandler := handlers.NewBulkHandler(bulkUsecase, xmlrpcClient)
+	searchHandler := handlers.NewSearchHandler(searchUsecase)
+
+	// Initialize router with new handlers
+	router := httpRouter.NewRouterUpdated(
 		authHandler,
 		userHandler,
 		groupHandler,
+		bulkHandler,   // NEW: Bulk operations handler
+		searchHandler, // NEW: Advanced search handler
 		authMiddleware,
 		corsMiddleware,
 	)
@@ -128,8 +142,8 @@ func main() {
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
 		Handler:      router.SetupRoutes(),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  30 * time.Second, // Increased for file uploads
+		WriteTimeout: 30 * time.Second, // Increased for bulk operations
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -138,11 +152,52 @@ func main() {
 		logger.Log.Info("Server starting on port " + cfg.Server.Port)
 		logger.Log.Info("Swagger UI available at: http://localhost:" + cfg.Server.Port + "/swagger/index.html")
 
+		// Log feature information
+		logger.Log.Info("✅ Basic User/Group Management")
+		logger.Log.Info("✅ RSA256 JWT Authentication")
+		logger.Log.Info("🆕 Bulk Operations:")
+		logger.Log.Info("   - Bulk user creation (up to 100 users)")
+		logger.Log.Info("   - Bulk group creation (up to 50 groups)")
+		logger.Log.Info("   - Bulk actions (enable/disable/reset-otp)")
+		logger.Log.Info("   - Bulk expiration extension")
+		logger.Log.Info("🆕 File Import/Export:")
+		logger.Log.Info("   - CSV/JSON/XLSX import with validation")
+		logger.Log.Info("   - Template generation")
+		logger.Log.Info("   - Dry-run mode for testing")
+		logger.Log.Info("🆕 Advanced Search:")
+		logger.Log.Info("   - Complex filters and sorting")
+		logger.Log.Info("   - Saved searches")
+		logger.Log.Info("   - Search suggestions and autocomplete")
+		logger.Log.Info("   - Search analytics and statistics")
+		logger.Log.Info("   - Export search results")
+
 		if cfg.JWT.UseRSA {
 			logger.Log.Info("Using RSA256 JWT tokens for enhanced security")
 		} else {
 			logger.Log.Warn("Using HMAC256 JWT tokens - consider upgrading to RSA256 for production")
 		}
+
+		// Log new API endpoints
+		logger.Log.Info("🔗 New API Endpoints:")
+		logger.Log.Info("Bulk Operations:")
+		logger.Log.Info("  POST /api/bulk/users/create")
+		logger.Log.Info("  POST /api/bulk/users/actions")
+		logger.Log.Info("  POST /api/bulk/users/extend")
+		logger.Log.Info("  POST /api/bulk/users/import")
+		logger.Log.Info("  GET  /api/bulk/users/template")
+		logger.Log.Info("  POST /api/bulk/groups/create")
+		logger.Log.Info("  POST /api/bulk/groups/actions")
+		logger.Log.Info("  POST /api/bulk/groups/import")
+		logger.Log.Info("  GET  /api/bulk/groups/template")
+		logger.Log.Info("Advanced Search:")
+		logger.Log.Info("  POST /api/search/users")
+		logger.Log.Info("  POST /api/search/groups")
+		logger.Log.Info("  GET  /api/search/quick")
+		logger.Log.Info("  POST /api/search/suggestions")
+		logger.Log.Info("  POST /api/search/export")
+		logger.Log.Info("  GET  /api/search/analytics")
+		logger.Log.Info("  POST /api/search/saved")
+		logger.Log.Info("  GET  /api/search/saved")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Log.Fatal("Server failed to start:", err)
@@ -163,7 +218,7 @@ func main() {
 		logger.Log.Fatal("Server forced to shutdown:", err)
 	}
 
-	logger.Log.Info("Server exited")
+	logger.Log.Info("GoVPN API Enhanced v1.1.0 exited gracefully")
 }
 
 // initializeJWTService creates a single JWT service instance to be shared
@@ -207,7 +262,9 @@ func initializeJWTService(jwtConfig config.JWTConfig) (JWTServiceInterface, erro
 
 			// Log the public keys for external verification (optional)
 			if accessPubKey, err := rsaService.GetAccessPublicKeyPEM(); err == nil {
-				logger.Log.Debug("Access token public key: " + accessPubKey)
+				logger.Log.Debug("Access token public key available for verification")
+				// In production, you might want to save this to a file or database
+				_ = accessPubKey // Placeholder to avoid unused variable
 			}
 		}
 	} else {

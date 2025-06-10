@@ -11,31 +11,37 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-type Router struct {
+type RouterUpdated struct {
 	authHandler    *handlers.AuthHandler
 	userHandler    *handlers.UserHandler
 	groupHandler   *handlers.GroupHandler
+	bulkHandler    *handlers.BulkHandler   // NEW: Bulk operations handler
+	searchHandler  *handlers.SearchHandler // NEW: Advanced search handler
 	authMiddleware *middleware.AuthMiddleware
 	corsMiddleware *middleware.CorsMiddleware
 }
 
-func NewRouter(
+func NewRouterUpdated(
 	authHandler *handlers.AuthHandler,
 	userHandler *handlers.UserHandler,
 	groupHandler *handlers.GroupHandler,
+	bulkHandler *handlers.BulkHandler, // NEW: Bulk handler injection
+	searchHandler *handlers.SearchHandler, // NEW: Search handler injection
 	authMiddleware *middleware.AuthMiddleware,
 	corsMiddleware *middleware.CorsMiddleware,
-) *Router {
-	return &Router{
+) *RouterUpdated {
+	return &RouterUpdated{
 		authHandler:    authHandler,
 		userHandler:    userHandler,
 		groupHandler:   groupHandler,
+		bulkHandler:    bulkHandler,   // NEW
+		searchHandler:  searchHandler, // NEW
 		authMiddleware: authMiddleware,
 		corsMiddleware: corsMiddleware,
 	}
 }
 
-func (r *Router) SetupRoutes() *gin.Engine {
+func (r *RouterUpdated) SetupRoutes() *gin.Engine {
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -70,7 +76,7 @@ func (r *Router) SetupRoutes() *gin.Engine {
 	return router
 }
 
-func (r *Router) setupPublicRoutes(router *gin.Engine) {
+func (r *RouterUpdated) setupPublicRoutes(router *gin.Engine) {
 	// Swagger endpoint - available without authentication
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
@@ -82,7 +88,7 @@ func (r *Router) setupPublicRoutes(router *gin.Engine) {
 	}
 }
 
-func (r *Router) setupProtectedRoutes(router *gin.Engine) {
+func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 	// Protected routes that require authentication
 	protected := router.Group("/")
 	protected.Use(r.authMiddleware.RequireAuth())
@@ -93,7 +99,7 @@ func (r *Router) setupProtectedRoutes(router *gin.Engine) {
 		// API routes
 		api := protected.Group("/api")
 		{
-			// User routes
+			// =================== EXISTING USER ROUTES ===================
 			users := api.Group("/users")
 			{
 				users.POST("/", r.userHandler.CreateUser)
@@ -105,7 +111,7 @@ func (r *Router) setupProtectedRoutes(router *gin.Engine) {
 				users.PUT("/:username/:action", r.userHandler.UserAction)
 			}
 
-			// Group routes
+			// =================== EXISTING GROUP ROUTES ===================
 			groups := api.Group("/groups")
 			{
 				groups.POST("/", r.groupHandler.CreateGroup)
@@ -115,23 +121,99 @@ func (r *Router) setupProtectedRoutes(router *gin.Engine) {
 				groups.DELETE("/:groupName", r.groupHandler.DeleteGroup)
 				groups.PUT("/:groupName/:action", r.groupHandler.GroupAction)
 			}
+
+			// =================== NEW BULK OPERATIONS ROUTES ===================
+			bulk := api.Group("/bulk")
+			{
+				// User bulk operations
+				userBulk := bulk.Group("/users")
+				{
+					userBulk.POST("/create", r.bulkHandler.BulkCreateUsers)
+					userBulk.POST("/actions", r.bulkHandler.BulkUserActions)
+					userBulk.POST("/extend", r.bulkHandler.BulkExtendUsers)
+					userBulk.POST("/import", r.bulkHandler.ImportUsers)
+					userBulk.GET("/template", r.bulkHandler.ExportUserTemplate)
+				}
+
+				// Group bulk operations
+				groupBulk := bulk.Group("/groups")
+				{
+					groupBulk.POST("/create", r.bulkHandler.BulkCreateGroups)
+					groupBulk.POST("/actions", r.bulkHandler.BulkGroupActions)
+					groupBulk.POST("/import", r.bulkHandler.ImportGroups)
+					groupBulk.GET("/template", r.bulkHandler.ExportGroupTemplate)
+				}
+			}
+
+			// =================== NEW ADVANCED SEARCH ROUTES ===================
+			search := api.Group("/search")
+			{
+				// Advanced search endpoints
+				search.POST("/users", r.searchHandler.AdvancedUserSearch)
+				search.POST("/groups", r.searchHandler.AdvancedGroupSearch)
+
+				// Quick search
+				search.GET("/quick", r.searchHandler.QuickSearch)
+
+				// Search suggestions and autocomplete
+				search.POST("/suggestions", r.searchHandler.GetSearchSuggestions)
+
+				// Export search results
+				search.POST("/export", r.searchHandler.ExportSearchResults)
+
+				// Search analytics
+				search.GET("/analytics", r.searchHandler.GetSearchAnalytics)
+
+				// Saved searches management
+				saved := search.Group("/saved")
+				{
+					saved.POST("/", r.searchHandler.SaveSearch)
+					saved.GET("/", r.searchHandler.GetSavedSearches)
+					saved.GET("/:searchId/execute", r.searchHandler.ExecuteSavedSearch)
+					saved.DELETE("/:searchId", r.searchHandler.DeleteSavedSearch)
+				}
+			}
 		}
 	}
 }
 
-func (r *Router) healthCheck(c *gin.Context) {
+func (r *RouterUpdated) healthCheck(c *gin.Context) {
 	RespondWithSuccess(c, 200, gin.H{
 		"status":    "healthy",
 		"timestamp": time.Now().UTC(),
 		"service":   "govpn-api",
+		"version":   "1.1.0", // Updated version
+		"features": []string{
+			"bulk-operations",
+			"advanced-search",
+			"file-import",
+			"search-analytics",
+		},
 	})
 }
 
-func (r *Router) apiInfo(c *gin.Context) {
+func (r *RouterUpdated) apiInfo(c *gin.Context) {
 	RespondWithSuccess(c, 200, gin.H{
 		"service":     "GoVPN API",
-		"version":     "1.0.0",
-		"description": "OpenVPN Access Server Management API",
+		"version":     "1.1.0", // Updated version
+		"description": "OpenVPN Access Server Management API with Bulk Operations and Advanced Search",
+		"features": gin.H{
+			"bulk_operations": gin.H{
+				"description":       "Create, manage, and import multiple users/groups",
+				"supported_formats": []string{"CSV", "JSON", "XLSX"},
+				"max_batch_size": gin.H{
+					"users":  100,
+					"groups": 50,
+				},
+			},
+			"advanced_search": gin.H{
+				"description": "Complex search with filters, sorting, and analytics",
+				"features": []string{
+					"date_ranges", "status_filters", "pattern_matching",
+					"saved_searches", "autocomplete", "export",
+				},
+			},
+		},
 		"endpoints": gin.H{
 			"swagger": gin.H{
 				"ui":   "/swagger/index.html",
@@ -158,6 +240,37 @@ func (r *Router) apiInfo(c *gin.Context) {
 				"update": "PUT /api/groups/{groupName}",
 				"delete": "DELETE /api/groups/{groupName}",
 				"action": "PUT /api/groups/{groupName}/{action}",
+			},
+			// NEW: Bulk operations endpoints
+			"bulk_operations": gin.H{
+				"users": gin.H{
+					"bulk_create":  "POST /api/bulk/users/create",
+					"bulk_actions": "POST /api/bulk/users/actions",
+					"bulk_extend":  "POST /api/bulk/users/extend",
+					"import":       "POST /api/bulk/users/import",
+					"template":     "GET /api/bulk/users/template",
+				},
+				"groups": gin.H{
+					"bulk_create":  "POST /api/bulk/groups/create",
+					"bulk_actions": "POST /api/bulk/groups/actions",
+					"import":       "POST /api/bulk/groups/import",
+					"template":     "GET /api/bulk/groups/template",
+				},
+			},
+			// NEW: Advanced search endpoints
+			"advanced_search": gin.H{
+				"user_search":    "POST /api/search/users",
+				"group_search":   "POST /api/search/groups",
+				"quick_search":   "GET /api/search/quick",
+				"suggestions":    "POST /api/search/suggestions",
+				"export_results": "POST /api/search/export",
+				"analytics":      "GET /api/search/analytics",
+				"saved_searches": gin.H{
+					"save":    "POST /api/search/saved",
+					"list":    "GET /api/search/saved",
+					"execute": "GET /api/search/saved/{id}/execute",
+					"delete":  "DELETE /api/search/saved/{id}",
+				},
 			},
 		},
 		"documentation": "/swagger/index.html",
