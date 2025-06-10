@@ -25,6 +25,7 @@ type authUsecaseImpl struct {
 	jwtService JWTService
 }
 
+// NewAuthUsecase creates a new auth usecase with JWT service creation (original method)
 func NewAuthUsecase(userRepo repositories.UserRepository, ldapClient *ldap.Client, jwtConfig config.JWTConfig) AuthUsecase {
 	var jwtService JWTService
 
@@ -80,6 +81,15 @@ func NewAuthUsecase(userRepo repositories.UserRepository, ldapClient *ldap.Clien
 		logger.Log.Warn("Using legacy HMAC256 JWT service. Consider migrating to RSA256 for better security.")
 	}
 
+	return &authUsecaseImpl{
+		userRepo:   userRepo,
+		ldapClient: ldapClient,
+		jwtService: jwtService,
+	}
+}
+
+// NewAuthUsecaseWithJWTService creates a new auth usecase with injected JWT service
+func NewAuthUsecaseWithJWTService(userRepo repositories.UserRepository, ldapClient *ldap.Client, jwtService JWTService) AuthUsecase {
 	return &authUsecaseImpl{
 		userRepo:   userRepo,
 		ldapClient: ldapClient,

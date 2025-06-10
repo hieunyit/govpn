@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"fmt"
 	"govpn/internal/application/dto"
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/usecases"
@@ -8,8 +10,10 @@ import (
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
+	"io"
 	nethttp "net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -304,18 +308,37 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 
 	switch action {
 	case "enable":
+		// Validate that no body is provided for enable action
+		if err := h.validateNoBody(c, "enable"); err != nil {
+			respondWithError(c, err)
+			return
+		}
 		err = h.userUsecase.EnableUser(c.Request.Context(), username)
 		message = "User enabled successfully"
+
 	case "disable":
+		// Validate that no body is provided for disable action
+		if err := h.validateNoBody(c, "disable"); err != nil {
+			respondWithError(c, err)
+			return
+		}
 		err = h.userUsecase.DisableUser(c.Request.Context(), username)
 		message = "User disabled successfully"
+
 	case "reset-otp":
+		// Validate that no body is provided for reset-otp action
+		if err := h.validateNoBody(c, "reset-otp"); err != nil {
+			respondWithError(c, err)
+			return
+		}
 		err = h.userUsecase.RegenerateTOTP(c.Request.Context(), username)
 		message = "User OTP reset successfully"
+
 	case "change-password":
+		// Validate and parse body for change-password action
 		var req dto.ChangePasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			respondWithError(c, errors.BadRequest("Invalid request format", err))
+			respondWithError(c, errors.BadRequest("Invalid request format for change-password action", err))
 			return
 		}
 
@@ -326,8 +349,9 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 
 		err = h.userUsecase.ChangePassword(c.Request.Context(), username, req.Password)
 		message = "Password changed successfully"
+
 	default:
-		respondWithError(c, errors.BadRequest("Invalid action", nil))
+		respondWithError(c, errors.BadRequest("Invalid action. Supported actions: enable, disable, reset-otp, change-password", nil))
 		return
 	}
 
@@ -350,6 +374,41 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 		Info("User action completed successfully")
 
 	respondWithMessage(c, nethttp.StatusOK, message)
+}
+
+// validateNoBody checks if request body is empty for actions that don't require body
+func (h *UserHandler) validateNoBody(c *gin.Context, action string) *errors.AppError {
+	// Check Content-Length header
+	if c.Request.ContentLength > 0 {
+		return errors.BadRequest(
+			fmt.Sprintf("Action '%s' does not accept request body", action),
+			nil,
+		)
+	}
+
+	// Check if Content-Type suggests JSON body
+	contentType := c.GetHeader("Content-Type")
+	if strings.Contains(strings.ToLower(contentType), "application/json") {
+		// Try to read a small amount to see if there's actual content
+		body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1024))
+		if err != nil {
+			return errors.BadRequest("Error reading request body", err)
+		}
+
+		// Reset body for any future reads
+		c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+		// Check if body contains non-whitespace content
+		trimmedBody := strings.TrimSpace(string(body))
+		if len(trimmedBody) > 0 {
+			return errors.BadRequest(
+				fmt.Sprintf("Action '%s' does not accept request body. Remove body data from request.", action),
+				fmt.Errorf("unexpected body content: %s", trimmedBody),
+			)
+		}
+	}
+
+	return nil
 }
 
 // ListUsers godoc

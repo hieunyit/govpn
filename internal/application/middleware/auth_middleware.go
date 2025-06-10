@@ -20,6 +20,7 @@ type AuthMiddleware struct {
 	jwtService JWTService
 }
 
+// NewAuthMiddleware creates middleware with JWT service creation (original method)
 func NewAuthMiddleware(jwtConfig config.JWTConfig) *AuthMiddleware {
 	var jwtService JWTService
 
@@ -70,6 +71,13 @@ func NewAuthMiddleware(jwtConfig config.JWTConfig) *AuthMiddleware {
 		logger.Log.Warn("Auth middleware using legacy HMAC256 JWT service")
 	}
 
+	return &AuthMiddleware{
+		jwtService: jwtService,
+	}
+}
+
+// NewAuthMiddlewareWithJWTService creates middleware with injected JWT service
+func NewAuthMiddlewareWithJWTService(jwtService JWTService) *AuthMiddleware {
 	return &AuthMiddleware{
 		jwtService: jwtService,
 	}

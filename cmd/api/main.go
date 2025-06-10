@@ -37,10 +37,19 @@ import (
 	"govpn/internal/infrastructure/xmlrpc"
 	httpRouter "govpn/internal/presentation/http"
 	"govpn/pkg/config"
+	"govpn/pkg/jwt"
 	"govpn/pkg/logger"
 
 	_ "govpn/docs" // Import generated docs
 )
+
+// JWTServiceInterface defines the interface for JWT operations
+type JWTServiceInterface interface {
+	GenerateAccessToken(username, role string) (string, error)
+	GenerateRefreshToken(username, role string) (string, error)
+	ValidateAccessToken(tokenString string) (*jwt.Claims, error)
+	ValidateRefreshToken(tokenString string) (*jwt.Claims, error)
+}
 
 func main() {
 	// Load configuration
@@ -62,6 +71,12 @@ func main() {
 		logger.Log.Info("Starting GoVPN API with RSA256 JWT authentication")
 	} else {
 		logger.Log.Warn("Starting GoVPN API with legacy HMAC256 JWT authentication")
+	}
+
+	// Initialize shared JWT service
+	jwtService, err := initializeJWTService(cfg.JWT)
+	if err != nil {
+		log.Fatal("Failed to initialize JWT service:", err)
 	}
 
 	// Initialize infrastructure
@@ -86,13 +101,13 @@ func main() {
 	userRepo := repositories.NewUserRepository(xmlrpcClient)
 	groupRepo := repositories.NewGroupRepository(xmlrpcClient)
 
-	// Initialize use cases
-	authUsecase := usecases.NewAuthUsecase(userRepo, ldapClient, cfg.JWT)
+	// Initialize use cases with shared JWT service
+	authUsecase := usecases.NewAuthUsecaseWithJWTService(userRepo, ldapClient, jwtService)
 	userUsecase := usecases.NewUserUsecase(userRepo, groupRepo, ldapClient)
 	groupUsecase := usecases.NewGroupUsecase(groupRepo)
 
-	// Initialize middleware with full JWT config
-	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT)
+	// Initialize middleware with shared JWT service
+	authMiddleware := middleware.NewAuthMiddlewareWithJWTService(jwtService)
 	corsMiddleware := middleware.NewCorsMiddleware()
 
 	// Initialize handlers
@@ -149,4 +164,63 @@ func main() {
 	}
 
 	logger.Log.Info("Server exited")
+}
+
+// initializeJWTService creates a single JWT service instance to be shared
+func initializeJWTService(jwtConfig config.JWTConfig) (JWTServiceInterface, error) {
+	var jwtService JWTServiceInterface
+
+	if jwtConfig.UseRSA {
+		// Use RSA JWT service
+		if jwtConfig.AccessPrivateKey != "" && jwtConfig.RefreshPrivateKey != "" {
+			// Use provided RSA keys
+			rsaService, err := jwt.NewRSAServiceWithKeys(
+				jwtConfig.AccessPrivateKey,
+				jwtConfig.RefreshPrivateKey,
+				jwtConfig.AccessTokenExpireDuration,
+				jwtConfig.RefreshTokenExpireDuration,
+			)
+			if err != nil {
+				logger.Log.WithError(err).Error("Failed to create RSA JWT service with provided keys, falling back to generated keys")
+				// Fallback to generated keys
+				rsaService, err = jwt.NewRSAService(
+					jwtConfig.AccessTokenExpireDuration,
+					jwtConfig.RefreshTokenExpireDuration,
+				)
+				if err != nil {
+					return nil, err
+				}
+			}
+			jwtService = rsaService
+			logger.Log.Info("JWT service using RSA256 with provided keys")
+		} else {
+			// Generate new RSA keys
+			rsaService, err := jwt.NewRSAService(
+				jwtConfig.AccessTokenExpireDuration,
+				jwtConfig.RefreshTokenExpireDuration,
+			)
+			if err != nil {
+				return nil, err
+			}
+			jwtService = rsaService
+			logger.Log.Info("JWT service using RSA256 with generated keys")
+
+			// Log the public keys for external verification (optional)
+			if accessPubKey, err := rsaService.GetAccessPublicKeyPEM(); err == nil {
+				logger.Log.Debug("Access token public key: " + accessPubKey)
+			}
+		}
+	} else {
+		// Use legacy HMAC JWT service
+		hmacService := jwt.NewService(
+			jwtConfig.Secret,
+			jwtConfig.RefreshSecret,
+			jwtConfig.AccessTokenExpireDuration,
+			jwtConfig.RefreshTokenExpireDuration,
+		)
+		jwtService = hmacService
+		logger.Log.Warn("JWT service using legacy HMAC256. Consider migrating to RSA256 for better security.")
+	}
+
+	return jwtService, nil
 }
