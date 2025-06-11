@@ -15,6 +15,7 @@ type GroupFilter struct {
 	Role       string
 	Limit      int
 	Offset     int
+	Page       int
 }
 
 // Methods

@@ -9,6 +9,7 @@ import (
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
 	nethttp "net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -49,6 +50,12 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Create group request validation failed")
 		RespondWithValidationError(c, err)
+		return
+	}
+
+	// BASIC FIX: Validate reserved group names
+	if h.isReservedGroupName(req.GroupName) {
+		RespondWithError(c, errors.BadRequest("Group name is reserved and cannot be used", nil))
 		return
 	}
 
@@ -138,6 +145,12 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
+	// BASIC FIX: Check if group is system group
+	if h.isSystemGroup(groupName) {
+		RespondWithError(c, errors.BadRequest("Cannot modify system group", nil))
+		return
+	}
+
 	var req dto.UpdateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind update group request")
@@ -196,6 +209,12 @@ func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 		return
 	}
 
+	// BASIC FIX: Check if group is system group
+	if h.isSystemGroup(groupName) {
+		RespondWithError(c, errors.BadRequest("Cannot delete system group", nil))
+		return
+	}
+
 	if err := h.groupUsecase.DeleteGroup(c.Request.Context(), groupName); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			RespondWithError(c, appErr)
@@ -215,16 +234,15 @@ func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 
 // GroupAction godoc
 // @Summary Perform group action
-// @Description Enable or disable a group
+// @Description Perform actions like enable, disable
 // @Tags Groups
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param groupName path string true "Group name"
-// @Param action path string true "Action (enable/disable)" Enums(enable, disable)
+// @Param action path string true "Action" Enums(enable, disable)
 // @Success 200 {object} dto.MessageResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName}/{action} [put]
 func (h *GroupHandler) GroupAction(c *gin.Context) {
 	groupName := c.Param("groupName")
@@ -235,60 +253,105 @@ func (h *GroupHandler) GroupAction(c *gin.Context) {
 		return
 	}
 
-	if action == "" {
-		RespondWithError(c, errors.BadRequest("Action is required", nil))
+	// BASIC FIX: Check if group is system group
+	if h.isSystemGroup(groupName) && action == "disable" {
+		RespondWithError(c, errors.BadRequest("Cannot disable system group", nil))
 		return
 	}
 
-	var err error
-	var message string
-
-	switch action {
-	case "enable":
-		err = h.groupUsecase.EnableGroup(c.Request.Context(), groupName)
-		message = "Group enabled successfully"
-	case "disable":
-		err = h.groupUsecase.DisableGroup(c.Request.Context(), groupName)
-		message = "Group disabled successfully"
-	default:
-		RespondWithError(c, errors.BadRequest("Invalid action", nil))
+	// Validate action
+	if action != "enable" && action != "disable" {
+		RespondWithError(c, errors.BadRequest("Invalid action. Allowed actions: enable, disable", nil))
 		return
 	}
 
+	// Get existing group to check current state
+	existingGroup, err := h.groupUsecase.GetGroup(c.Request.Context(), groupName)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			RespondWithError(c, appErr)
 		} else {
-			RespondWithError(c, errors.InternalServerError("Action failed", err))
+			RespondWithError(c, errors.InternalServerError("Failed to get group", err))
 		}
 		return
+	}
+
+	switch action {
+	case "enable":
+		if existingGroup.DenyAccess != "true" {
+			RespondWithError(c, errors.BadRequest("Group is already enabled", nil))
+			return
+		}
+
+		group := &entities.Group{
+			GroupName: groupName,
+		}
+		group.SetDenyAccess(false)
+
+		if err := h.groupUsecase.UpdateGroup(c.Request.Context(), group); err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				RespondWithError(c, appErr)
+			} else {
+				RespondWithError(c, errors.InternalServerError("Failed to enable group", err))
+			}
+			return
+		}
+		RespondWithMessage(c, nethttp.StatusOK, "Group enabled successfully")
+
+	case "disable":
+		if existingGroup.DenyAccess == "true" {
+			RespondWithError(c, errors.BadRequest("Group is already disabled", nil))
+			return
+		}
+
+		group := &entities.Group{
+			GroupName: groupName,
+		}
+		group.SetDenyAccess(true)
+
+		if err := h.groupUsecase.UpdateGroup(c.Request.Context(), group); err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				RespondWithError(c, appErr)
+			} else {
+				RespondWithError(c, errors.InternalServerError("Failed to disable group", err))
+			}
+			return
+		}
+		RespondWithMessage(c, nethttp.StatusOK, "Group disabled successfully")
 	}
 
 	// Restart OpenVPN service
 	if err := h.xmlrpcClient.RunStart(); err != nil {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group action")
 	}
-
-	RespondWithMessage(c, nethttp.StatusOK, message)
 }
 
 // ListGroups godoc
 // @Summary List groups
-// @Description Get list of groups with optional filtering
+// @Description Get a paginated list of groups with filtering
 // @Tags Groups
 // @Security BearerAuth
 // @Produce json
 // @Param groupName query string false "Filter by group name"
-// @Param authMethod query string false "Filter by auth method"
+// @Param authMethod query string false "Filter by auth method" Enums(ldap, local)
 // @Param role query string false "Filter by role"
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(10)
 // @Success 200 {object} dto.GroupListResponse
+// @Failure 400 {object} dto.ErrorResponse
 // @Router /api/groups [get]
 func (h *GroupHandler) ListGroups(c *gin.Context) {
 	var filter dto.GroupFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
-		RespondWithError(c, errors.BadRequest("Invalid query parameters", err))
+		logger.Log.WithError(err).Error("Failed to bind group filter")
+		RespondWithError(c, errors.BadRequest("Invalid filter parameters", err))
+		return
+	}
+
+	// Validate filter
+	if err := validator.Validate(&filter); err != nil {
+		logger.Log.WithError(err).Error("Group filter validation failed")
+		RespondWithValidationError(c, err)
 		return
 	}
 
@@ -297,8 +360,8 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 		GroupName:  filter.GroupName,
 		AuthMethod: filter.AuthMethod,
 		Role:       filter.Role,
+		Page:       filter.Page,
 		Limit:      filter.Limit,
-		Offset:     (filter.Page - 1) * filter.Limit,
 	}
 
 	groups, err := h.groupUsecase.ListGroups(c.Request.Context(), entityFilter)
@@ -312,16 +375,16 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 	}
 
 	// Convert entities to DTOs
-	groupResponses := make([]dto.GroupResponse, len(groups))
-	for i, group := range groups {
-		groupResponses[i] = dto.GroupResponse{
+	var groupResponses []dto.GroupResponse
+	for _, group := range groups {
+		groupResponses = append(groupResponses, dto.GroupResponse{
 			GroupName:     group.GroupName,
 			AuthMethod:    group.AuthMethod,
 			MFA:           group.MFA == "true",
 			Role:          group.Role,
 			DenyAccess:    group.DenyAccess == "true",
 			AccessControl: group.AccessControl,
-		}
+		})
 	}
 
 	response := dto.GroupListResponse{
@@ -334,4 +397,23 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 	RespondWithSuccess(c, nethttp.StatusOK, response)
 }
 
-// Response helper functions are now in response_helpers.go
+// BASIC FIX: Helper functions to validate group names
+func (h *GroupHandler) isReservedGroupName(groupName string) bool {
+	reservedNames := []string{"__DEFAULT__", "admin", "root", "system", "default"}
+	for _, reserved := range reservedNames {
+		if strings.EqualFold(groupName, reserved) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *GroupHandler) isSystemGroup(groupName string) bool {
+	systemGroups := []string{"__DEFAULT__", "admin", "system"}
+	for _, systemGroup := range systemGroups {
+		if strings.EqualFold(groupName, systemGroup) {
+			return true
+		}
+	}
+	return false
+}

@@ -22,6 +22,7 @@ type UserFilter struct {
 	GroupName  string
 	Limit      int
 	Offset     int
+	Page       int
 }
 
 // UserRole constants

@@ -102,12 +102,7 @@ func (r ChangePasswordRequest) GetValidationErrors() map[string]string {
 	}
 }
 
-// Helper method to check if password is required
-func (r CreateUserRequest) IsPasswordRequired() bool {
-	return r.AuthMethod == "local"
-}
-
-// Helper method to validate auth-specific requirements
+// CRITICAL FIX: Helper method to validate auth-specific requirements
 func (r CreateUserRequest) ValidateAuthSpecific() error {
 	if r.AuthMethod == "local" && r.Password == "" {
 		return fmt.Errorf("password is required for local authentication")
@@ -117,7 +112,16 @@ func (r CreateUserRequest) ValidateAuthSpecific() error {
 		return fmt.Errorf("password must be at least 8 characters for local authentication")
 	}
 
+	if r.AuthMethod == "ldap" && r.Password != "" {
+		return fmt.Errorf("password should not be provided for LDAP users - authentication handled by LDAP server")
+	}
+
 	return nil
+}
+
+// Helper method to check if password is required
+func (r CreateUserRequest) IsPasswordRequired() bool {
+	return r.AuthMethod == "local"
 }
 
 // Enhanced user creation with validation examples

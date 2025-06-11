@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"fmt"
 	"govpn/internal/application/dto"
 	"govpn/internal/domain/entities"
@@ -10,7 +9,6 @@ import (
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
-	"io"
 	nethttp "net/http"
 	"strconv"
 	"strings"
@@ -57,15 +55,12 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	// Additional validation for auth method specific requirements
-	if err := req.ValidateAuthSpecific(); err != nil {
+	// CRITICAL FIX: Validate auth method specific requirements
+	if err := h.validateAuthSpecificRequirements(&req); err != nil {
 		logger.Log.WithError(err).Error("Auth-specific validation failed")
 		respondWithError(c, errors.BadRequest(err.Error(), err))
 		return
 	}
-
-	// Normalize MAC addresses
-	req.MacAddresses = validator.ConvertMAC(req.MacAddresses)
 
 	// Convert DTO to entity
 	user := &entities.User{
@@ -78,7 +73,6 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		AccessControl:  req.AccessControl,
 	}
 
-	// Log the user creation attempt
 	logger.Log.WithField("username", user.Username).
 		WithField("authMethod", user.AuthMethod).
 		WithField("email", user.Email).
@@ -97,10 +91,8 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	// Restart OpenVPN service
 	if err := h.xmlrpcClient.RunStart(); err != nil {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user creation")
-		// Don't fail the request, just log the error
 	}
 
-	logger.Log.WithField("username", user.Username).Info("User created successfully")
 	respondWithMessage(c, nethttp.StatusCreated, "User created successfully")
 }
 
@@ -120,8 +112,6 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		respondWithError(c, errors.BadRequest("Username is required", nil))
 		return
 	}
-
-	logger.Log.WithField("username", username).Debug("Getting user")
 
 	user, err := h.userUsecase.GetUser(c.Request.Context(), username)
 	if err != nil {
@@ -170,6 +160,17 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	// CRITICAL FIX: Get existing user first to check auth method
+	existingUser, err := h.userUsecase.GetUser(c.Request.Context(), username)
+	if err != nil {
+		if appErr, ok := err.(*errors.AppError); ok {
+			respondWithError(c, appErr)
+		} else {
+			respondWithError(c, errors.InternalServerError("Failed to get user", err))
+		}
+		return
+	}
+
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Log.WithError(err).Error("Failed to bind update user request")
@@ -184,15 +185,25 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// Normalize MAC addresses if provided
-	if len(req.MacAddresses) > 0 {
-		req.MacAddresses = validator.ConvertMAC(req.MacAddresses)
+	// CRITICAL FIX: Validate password update based on auth method
+	if req.Password != "" {
+		if existingUser.AuthMethod == "ldap" {
+			logger.Log.WithField("username", username).
+				WithField("authMethod", existingUser.AuthMethod).
+				Error("Attempted to change password for LDAP user")
+			respondWithError(c, errors.BadRequest("Password cannot be changed for LDAP users. LDAP users must change password through LDAP system.", nil))
+			return
+		}
+
+		if existingUser.AuthMethod == "local" && len(req.Password) < 8 {
+			respondWithError(c, errors.BadRequest("Password must be at least 8 characters", nil))
+			return
+		}
 	}
 
-	// Convert DTO to entity
+	// Convert DTO to entity (password handled separately above)
 	user := &entities.User{
 		Username:       username,
-		Password:       req.Password,
 		UserExpiration: req.UserExpiration,
 		MacAddresses:   req.MacAddresses,
 		AccessControl:  req.AccessControl,
@@ -202,10 +213,10 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		user.SetDenyAccess(*req.DenyAccess)
 	}
 
-	// Log the update attempt
 	logger.Log.WithField("username", username).
+		WithField("authMethod", existingUser.AuthMethod).
 		WithField("hasPassword", req.Password != "").
-		WithField("macAddressCount", len(req.MacAddresses)).
+		WithField("willChangePassword", req.Password != "" && existingUser.AuthMethod == "local").
 		Info("Updating user")
 
 	// Update user
@@ -218,11 +229,12 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// Change password if provided and user is local
-	if req.Password != "" {
+	// CRITICAL FIX: Only change password for local users
+	if req.Password != "" && existingUser.AuthMethod == "local" {
 		if err := h.userUsecase.ChangePassword(c.Request.Context(), username, req.Password); err != nil {
 			logger.Log.WithError(err).Error("Failed to change user password during update")
-			// Don't fail the entire update, just log the error
+			respondWithError(c, errors.InternalServerError("Failed to update password", err))
+			return
 		}
 	}
 
@@ -231,7 +243,6 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user update")
 	}
 
-	logger.Log.WithField("username", username).Info("User updated successfully")
 	respondWithMessage(c, nethttp.StatusOK, "User updated successfully")
 }
 
@@ -251,8 +262,6 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	logger.Log.WithField("username", username).Info("Deleting user")
-
 	if err := h.userUsecase.DeleteUser(c.Request.Context(), username); err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			respondWithError(c, appErr)
@@ -267,23 +276,21 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user deletion")
 	}
 
-	logger.Log.WithField("username", username).Info("User deleted successfully")
 	respondWithMessage(c, nethttp.StatusOK, "User deleted successfully")
 }
 
 // UserAction godoc
 // @Summary Perform user action
-// @Description Enable, disable, reset OTP, or change password for a user
+// @Description Perform actions like enable, disable, reset-otp, change-password
 // @Tags Users
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param username path string true "Username"
-// @Param action path string true "Action (enable/disable/reset-otp/change-password)" Enums(enable, disable, reset-otp, change-password)
-// @Param request body dto.ChangePasswordRequest false "Password change data (only for change-password action)"
+// @Param action path string true "Action" Enums(enable, disable, reset-otp, change-password)
+// @Param request body dto.ChangePasswordRequest false "Required only for change-password action"
 // @Success 200 {object} dto.MessageResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/users/{username}/{action} [put]
 func (h *UserHandler) UserAction(c *gin.Context) {
 	username := c.Param("username")
@@ -294,162 +301,146 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 		return
 	}
 
-	if action == "" {
-		respondWithError(c, errors.BadRequest("Action is required", nil))
-		return
-	}
-
-	logger.Log.WithField("username", username).
-		WithField("action", action).
-		Info("Performing user action")
-
-	var err error
-	var message string
-
-	switch action {
-	case "enable":
-		// Validate that no body is provided for enable action
-		if err := h.validateNoBody(c, "enable"); err != nil {
-			respondWithError(c, err)
-			return
-		}
-		err = h.userUsecase.EnableUser(c.Request.Context(), username)
-		message = "User enabled successfully"
-
-	case "disable":
-		// Validate that no body is provided for disable action
-		if err := h.validateNoBody(c, "disable"); err != nil {
-			respondWithError(c, err)
-			return
-		}
-		err = h.userUsecase.DisableUser(c.Request.Context(), username)
-		message = "User disabled successfully"
-
-	case "reset-otp":
-		// Validate that no body is provided for reset-otp action
-		if err := h.validateNoBody(c, "reset-otp"); err != nil {
-			respondWithError(c, err)
-			return
-		}
-		err = h.userUsecase.RegenerateTOTP(c.Request.Context(), username)
-		message = "User OTP reset successfully"
-
-	case "change-password":
-		// Validate and parse body for change-password action
-		var req dto.ChangePasswordRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			respondWithError(c, errors.BadRequest("Invalid request format for change-password action", err))
-			return
-		}
-
-		if err := validator.Validate(&req); err != nil {
-			respondWithValidationError(c, err)
-			return
-		}
-
-		err = h.userUsecase.ChangePassword(c.Request.Context(), username, req.Password)
-		message = "Password changed successfully"
-
-	default:
-		respondWithError(c, errors.BadRequest("Invalid action. Supported actions: enable, disable, reset-otp, change-password", nil))
-		return
-	}
-
+	// CRITICAL FIX: Get existing user to check auth method
+	existingUser, err := h.userUsecase.GetUser(c.Request.Context(), username)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			respondWithError(c, appErr)
 		} else {
-			respondWithError(c, errors.InternalServerError("Action failed", err))
+			respondWithError(c, errors.InternalServerError("Failed to get user", err))
 		}
 		return
 	}
 
-	// Restart OpenVPN service
-	if err := h.xmlrpcClient.RunStart(); err != nil {
-		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user action")
-	}
-
 	logger.Log.WithField("username", username).
 		WithField("action", action).
-		Info("User action completed successfully")
+		WithField("authMethod", existingUser.AuthMethod).
+		Info("Processing user action")
 
-	respondWithMessage(c, nethttp.StatusOK, message)
-}
+	switch action {
+	case "enable":
+		if err := h.userUsecase.EnableUser(c.Request.Context(), username); err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				respondWithError(c, appErr)
+			} else {
+				respondWithError(c, errors.InternalServerError("Failed to enable user", err))
+			}
+			return
+		}
+		respondWithMessage(c, nethttp.StatusOK, "User enabled successfully")
 
-// validateNoBody checks if request body is empty for actions that don't require body
-func (h *UserHandler) validateNoBody(c *gin.Context, action string) *errors.AppError {
-	// Check Content-Length header
-	if c.Request.ContentLength > 0 {
-		return errors.BadRequest(
-			fmt.Sprintf("Action '%s' does not accept request body", action),
-			nil,
-		)
-	}
+	case "disable":
+		if err := h.userUsecase.DisableUser(c.Request.Context(), username); err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				respondWithError(c, appErr)
+			} else {
+				respondWithError(c, errors.InternalServerError("Failed to disable user", err))
+			}
+			return
+		}
+		respondWithMessage(c, nethttp.StatusOK, "User disabled successfully")
 
-	// Check if Content-Type suggests JSON body
-	contentType := c.GetHeader("Content-Type")
-	if strings.Contains(strings.ToLower(contentType), "application/json") {
-		// Try to read a small amount to see if there's actual content
-		body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1024))
-		if err != nil {
-			return errors.BadRequest("Error reading request body", err)
+	case "reset-otp":
+		if err := h.userUsecase.RegenerateTOTP(c.Request.Context(), username); err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				respondWithError(c, appErr)
+			} else {
+				respondWithError(c, errors.InternalServerError("Failed to reset OTP", err))
+			}
+			return
+		}
+		respondWithMessage(c, nethttp.StatusOK, "OTP reset successfully")
+
+	case "change-password":
+		// CRITICAL FIX: Check auth method before allowing password change
+		if existingUser.AuthMethod == "ldap" {
+			logger.Log.WithField("username", username).
+				WithField("authMethod", existingUser.AuthMethod).
+				Error("Attempted password change for LDAP user via action")
+			respondWithError(c, errors.BadRequest("Password cannot be changed for LDAP users. Use LDAP system to change password.", nil))
+			return
 		}
 
-		// Reset body for any future reads
-		c.Request.Body = io.NopCloser(bytes.NewReader(body))
-
-		// Check if body contains non-whitespace content
-		trimmedBody := strings.TrimSpace(string(body))
-		if len(trimmedBody) > 0 {
-			return errors.BadRequest(
-				fmt.Sprintf("Action '%s' does not accept request body. Remove body data from request.", action),
-				fmt.Errorf("unexpected body content: %s", trimmedBody),
-			)
+		var req dto.ChangePasswordRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			logger.Log.WithError(err).Error("Failed to bind change password request")
+			respondWithError(c, errors.BadRequest("Invalid request format", err))
+			return
 		}
+
+		if err := validator.Validate(&req); err != nil {
+			logger.Log.WithError(err).Error("Change password validation failed")
+			respondWithValidationError(c, err)
+			return
+		}
+
+		if len(req.Password) < 8 {
+			respondWithError(c, errors.BadRequest("Password must be at least 8 characters", nil))
+			return
+		}
+
+		if err := h.userUsecase.ChangePassword(c.Request.Context(), username, req.Password); err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				respondWithError(c, appErr)
+			} else {
+				respondWithError(c, errors.InternalServerError("Failed to change password", err))
+			}
+			return
+		}
+
+		respondWithMessage(c, nethttp.StatusOK, "Password changed successfully")
+
+	default:
+		respondWithError(c, errors.BadRequest("Invalid action. Allowed actions: enable, disable, reset-otp, change-password", nil))
+		return
 	}
 
-	return nil
+	// Restart OpenVPN service for relevant actions
+	if action == "enable" || action == "disable" || action == "change-password" {
+		if err := h.xmlrpcClient.RunStart(); err != nil {
+			logger.Log.WithError(err).Error("Failed to restart OpenVPN service after user action")
+		}
+	}
 }
 
 // ListUsers godoc
 // @Summary List users
-// @Description Get list of users with optional filtering
+// @Description Get a paginated list of users with filtering
 // @Tags Users
 // @Security BearerAuth
 // @Produce json
 // @Param username query string false "Filter by username"
 // @Param email query string false "Filter by email"
-// @Param authMethod query string false "Filter by auth method (local/ldap)"
-// @Param role query string false "Filter by role (Admin/User)"
+// @Param authMethod query string false "Filter by auth method" Enums(ldap, local)
+// @Param role query string false "Filter by role" Enums(Admin, User)
 // @Param groupName query string false "Filter by group name"
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(10)
 // @Success 200 {object} dto.UserListResponse
+// @Failure 400 {object} dto.ErrorResponse
 // @Router /api/users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
 	var filter dto.UserFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
-		respondWithError(c, errors.BadRequest("Invalid query parameters", err))
+		logger.Log.WithError(err).Error("Failed to bind user filter")
+		respondWithError(c, errors.BadRequest("Invalid filter parameters", err))
 		return
 	}
 
-	// Validate filter parameters
 	if err := validator.Validate(&filter); err != nil {
+		logger.Log.WithError(err).Error("User filter validation failed")
 		respondWithValidationError(c, err)
 		return
 	}
 
-	logger.Log.WithField("filter", filter).Debug("Listing users")
-
-	// Convert DTO filter to entity filter
 	entityFilter := &entities.UserFilter{
 		Username:   filter.Username,
 		Email:      filter.Email,
 		AuthMethod: filter.AuthMethod,
 		Role:       filter.Role,
 		GroupName:  filter.GroupName,
+		Page:       filter.Page,
 		Limit:      filter.Limit,
-		Offset:     (filter.Page - 1) * filter.Limit,
 	}
 
 	users, err := h.userUsecase.ListUsers(c.Request.Context(), entityFilter)
@@ -462,10 +453,9 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	// Convert entities to DTOs
-	userResponses := make([]dto.UserResponse, len(users))
-	for i, user := range users {
-		userResponses[i] = dto.UserResponse{
+	var userResponses []dto.UserResponse
+	for _, user := range users {
+		userResponses = append(userResponses, dto.UserResponse{
 			Username:       user.Username,
 			Email:          user.Email,
 			AuthMethod:     user.AuthMethod,
@@ -476,7 +466,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 			DenyAccess:     user.DenyAccess == "true",
 			AccessControl:  user.AccessControl,
 			GroupName:      user.GroupName,
-		}
+		})
 	}
 
 	response := dto.UserListResponse{
@@ -486,31 +476,26 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		Limit: filter.Limit,
 	}
 
-	logger.Log.WithField("totalUsers", len(userResponses)).
-		WithField("page", filter.Page).
-		Info("Users listed successfully")
-
 	respondWithSuccess(c, nethttp.StatusOK, response)
 }
 
 // GetUserExpirations godoc
 // @Summary Get expiring users
-// @Description Get list of users expiring in specified days
+// @Description Get users that will expire in the specified number of days
 // @Tags Users
 // @Security BearerAuth
 // @Produce json
-// @Param days query int false "Days ahead to check for expiration" default(0)
+// @Param days query int false "Number of days" default(7)
 // @Success 200 {object} dto.UserExpirationResponse
+// @Failure 400 {object} dto.ErrorResponse
 // @Router /api/users/expirations [get]
 func (h *UserHandler) GetUserExpirations(c *gin.Context) {
-	daysStr := c.DefaultQuery("days", "0")
+	daysStr := c.DefaultQuery("days", "7")
 	days, err := strconv.Atoi(daysStr)
 	if err != nil || days < 0 {
 		respondWithError(c, errors.BadRequest("Invalid days parameter", err))
 		return
 	}
-
-	logger.Log.WithField("days", days).Info("Getting expiring users")
 
 	emails, err := h.userUsecase.GetExpiringUsers(c.Request.Context(), days)
 	if err != nil {
@@ -528,11 +513,30 @@ func (h *UserHandler) GetUserExpirations(c *gin.Context) {
 		Days:   days,
 	}
 
-	logger.Log.WithField("count", len(emails)).
-		WithField("days", days).
-		Info("Expiring users retrieved successfully")
-
 	respondWithSuccess(c, nethttp.StatusOK, response)
 }
 
-// Response helper functions are now in response_helpers.go
+// CRITICAL FIX: Validate auth method specific requirements
+func (h *UserHandler) validateAuthSpecificRequirements(req *dto.CreateUserRequest) error {
+	authMethod := strings.ToLower(strings.TrimSpace(req.AuthMethod))
+
+	switch authMethod {
+	case "local":
+		if strings.TrimSpace(req.Password) == "" {
+			return fmt.Errorf("password is required for local authentication")
+		}
+		if len(req.Password) < 8 {
+			return fmt.Errorf("password must be at least 8 characters for local authentication")
+		}
+	case "ldap":
+		if strings.TrimSpace(req.Password) != "" {
+			logger.Log.WithField("username", req.Username).
+				Warn("Password provided for LDAP user - clearing password")
+			req.Password = "" // Clear password for LDAP users
+		}
+	default:
+		return fmt.Errorf("invalid authentication method: %s. Must be 'local' or 'ldap'", req.AuthMethod)
+	}
+
+	return nil
+}
