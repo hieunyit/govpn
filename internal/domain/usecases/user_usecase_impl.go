@@ -2,14 +2,12 @@ package usecases
 
 import (
 	"context"
-	"fmt"
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/repositories"
 	"govpn/internal/infrastructure/ldap"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
-	"strings"
 )
 
 type userUsecaseImpl struct {
@@ -30,15 +28,21 @@ func (u *userUsecaseImpl) CreateUser(ctx context.Context, user *entities.User) e
 	logger.Log.WithField("username", user.Username).Info("Creating user")
 
 	// Check if user already exists
-	exists, err := u.userRepo.ExistsByUsername(ctx, user.Username)
+	exists_user, err := u.userRepo.ExistsByUsername(ctx, user.Username)
 	if err != nil {
 		return errors.InternalServerError("Failed to check user existence", err)
 	}
-	if exists {
+	if exists_user {
 		return errors.Conflict("User already exists", errors.ErrUserAlreadyExists)
 	}
+	exists_group, err := u.groupRepo.ExistsByName(ctx, user.GroupName)
+	if err != nil {
+		return errors.InternalServerError("Failed to check group existence", err)
+	}
+	if !exists_group && user.GroupName != "" {
+		return errors.NotFound("Group not found", errors.ErrGroupNotFound)
+	}
 
-	// For LDAP users, verify they exist in LDAP
 	if user.IsLDAPAuth() {
 		if err := u.ldapClient.CheckUserExists(user.Username); err != nil {
 			logger.Log.WithField("username", user.Username).WithError(err).Error("LDAP user check failed")
@@ -46,22 +50,15 @@ func (u *userUsecaseImpl) CreateUser(ctx context.Context, user *entities.User) e
 		}
 	}
 
-	// Process user group
-	groupName, err := u.processUserGroup(ctx, user)
-	if err != nil {
-		return errors.InternalServerError("Failed to process user group", err)
+	if user.GroupName == "" {
+		user.GroupName = "__DEFAULT__"
 	}
-	user.GroupName = groupName
 
 	// Convert and validate MAC addresses
 	user.MacAddresses = validator.ConvertMAC(user.MacAddresses)
 
 	// Create user
 	if err := u.userRepo.Create(ctx, user); err != nil {
-		// Cleanup group if user creation fails
-		if groupName != "__DEFAULT__" {
-			u.groupRepo.Delete(ctx, groupName)
-		}
 		return errors.InternalServerError("Failed to create user", err)
 	}
 
@@ -273,30 +270,4 @@ func (u *userUsecaseImpl) GetExpiringUsers(ctx context.Context, days int) ([]str
 	}
 
 	return emails, nil
-}
-
-func (u *userUsecaseImpl) processUserGroup(ctx context.Context, user *entities.User) (string, error) {
-	// If no access control, use default group
-	if len(user.AccessControl) == 0 {
-		return "__DEFAULT__", nil
-	}
-
-	// Validate and fix IP addresses
-	accessControl, err := validator.ValidateAndFixIPs(user.AccessControl)
-	if err != nil {
-		return "", fmt.Errorf("invalid IP addresses: %w", err)
-	}
-
-	// Create group name based on username
-	groupName := strings.ToUpper(user.Username) + "_GR"
-
-	// Create group
-	group := entities.NewGroup(groupName, user.AuthMethod)
-	group.AccessControl = accessControl
-
-	if err := u.groupRepo.Create(ctx, group); err != nil {
-		return "", fmt.Errorf("failed to create group: %w", err)
-	}
-
-	return groupName, nil
 }

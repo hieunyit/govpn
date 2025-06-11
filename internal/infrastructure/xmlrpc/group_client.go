@@ -208,19 +208,19 @@ func (c *GroupClient) makeCreateGroupRequest(group *entities.Group) string {
 	buf.WriteString(`<param><value><struct>`)
 
 	if group.AuthMethod != "" {
-		buf.WriteString(`<member><n>user_auth_type</n><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
+		buf.WriteString(`<member><name>user_auth_type</name><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
 	}
 
 	// Access control
 	for i, accessControl := range group.AccessControl {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		accessValue := "+SUBNET:" + accessControl
-		buf.WriteString(`<member><n>` + c.xmlEscape(accessName) + `</n><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
+		buf.WriteString(`<member><name>` + c.xmlEscape(accessName) + `</name><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
 	}
 
-	buf.WriteString(`<member><n>type</n><value><string>group</string></value></member>`)
-	buf.WriteString(`<member><n>group_declare</n><value><string>true</string></value></member>`)
-	buf.WriteString(`<member><n>prop_google_auth</n><value><string>true</string></value></member>`)
+	buf.WriteString(`<member><name>type</name><value><string>group</string></value></member>`)
+	buf.WriteString(`<member><name>group_declare</name><value><string>true</string></value></member>`)
+	buf.WriteString(`<member><name>prop_google_auth</name><value><string>true</string></value></member>`)
 	buf.WriteString(`</struct></value></param>`)
 	buf.WriteString(`<param><value><boolean>0</boolean></value></param>`)
 	buf.WriteString(`</params></methodCall>`)
@@ -282,14 +282,14 @@ func (c *GroupClient) makeUpdateGroupRequest(group *entities.Group) string {
 	for i, accessControl := range group.AccessControl {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		accessValue := "+SUBNET:" + accessControl
-		buf.WriteString(`<member><n>` + c.xmlEscape(accessName) + `</n><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
+		buf.WriteString(`<member><name>` + c.xmlEscape(accessName) + `</name><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
 	}
 
 	if group.AuthMethod != "" {
-		buf.WriteString(`<member><n>user_auth_type</n><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
+		buf.WriteString(`<member><name>user_auth_type</name><value><string>` + c.xmlEscape(group.AuthMethod) + `</string></value></member>`)
 	}
 	if group.DenyAccess != "" {
-		buf.WriteString(`<member><n>prop_deny</n><value><string>` + c.xmlEscape(group.DenyAccess) + `</string></value></member>`)
+		buf.WriteString(`<member><name>prop_deny</name><value><string>` + c.xmlEscape(group.DenyAccess) + `</string></value></member>`)
 	}
 
 	buf.WriteString(`</struct></value></param>`)
@@ -325,7 +325,7 @@ func (c *GroupClient) makeGroupPropertyRequest(groupName, property, value string
 		<value>
 			<struct>
 				<member>
-					<n>%s</n>
+					<name>%s</name>
 					<value>
 						<string>%s</string>
 					</value>
