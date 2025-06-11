@@ -17,28 +17,77 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tealeg/xlsx/v3"
 )
 
 type bulkUsecaseImpl struct {
-	userRepo   repositories.UserRepository
-	groupRepo  repositories.GroupRepository
-	ldapClient *ldap.Client
-	mu         sync.RWMutex // For thread-safe operations
+	userRepo         repositories.UserRepository
+	groupRepo        repositories.GroupRepository
+	ldapClient       *ldap.Client
+	mu               sync.RWMutex                       // For thread-safe operations
+	operationStatus  map[string]*BulkOperationStatus    // Track operation status
+	operationHistory map[string][]*BulkOperationHistory // Track operation history
+}
+
+// BulkOperationStatus represents status of ongoing operations
+type BulkOperationStatus struct {
+	ID         string      `json:"id"`
+	EntityType string      `json:"entityType"`
+	Operation  string      `json:"operation"`
+	Status     string      `json:"status"` // pending, running, completed, failed
+	Total      int         `json:"total"`
+	Processed  int         `json:"processed"`
+	Success    int         `json:"success"`
+	Failed     int         `json:"failed"`
+	StartTime  time.Time   `json:"startTime"`
+	EndTime    *time.Time  `json:"endTime,omitempty"`
+	Error      string      `json:"error,omitempty"`
+	Results    interface{} `json:"results,omitempty"`
+}
+
+// BulkOperationHistory represents completed operations
+type BulkOperationHistory struct {
+	ID         string      `json:"id"`
+	EntityType string      `json:"entityType"`
+	Operation  string      `json:"operation"`
+	Status     string      `json:"status"`
+	Total      int         `json:"total"`
+	Success    int         `json:"success"`
+	Failed     int         `json:"failed"`
+	Timestamp  time.Time   `json:"timestamp"`
+	Duration   string      `json:"duration"`
+	Results    interface{} `json:"results,omitempty"`
 }
 
 func NewBulkUsecase(userRepo repositories.UserRepository, groupRepo repositories.GroupRepository, ldapClient *ldap.Client) BulkUsecase {
 	return &bulkUsecaseImpl{
-		userRepo:   userRepo,
-		groupRepo:  groupRepo,
-		ldapClient: ldapClient,
+		userRepo:         userRepo,
+		groupRepo:        groupRepo,
+		ldapClient:       ldapClient,
+		operationStatus:  make(map[string]*BulkOperationStatus),
+		operationHistory: make(map[string][]*BulkOperationHistory),
 	}
 }
 
 // =================== BULK USER OPERATIONS ===================
 
 func (u *bulkUsecaseImpl) BulkCreateUsers(ctx context.Context, req *dto.BulkCreateUsersRequest) (*dto.BulkCreateUsersResponse, error) {
-	logger.Log.WithField("userCount", len(req.Users)).Info("Starting bulk user creation")
+	operationId := uuid.New().String()
+	logger.Log.WithField("operationId", operationId).WithField("userCount", len(req.Users)).Info("Starting bulk user creation")
+
+	// Initialize operation status
+	status := &BulkOperationStatus{
+		ID:         operationId,
+		EntityType: "users",
+		Operation:  "bulk_create",
+		Status:     "running",
+		Total:      len(req.Users),
+		StartTime:  time.Now(),
+	}
+	u.mu.Lock()
+	u.operationStatus[operationId] = status
+	u.mu.Unlock()
 
 	response := &dto.BulkCreateUsersResponse{
 		Total:   len(req.Users),
@@ -81,9 +130,49 @@ func (u *bulkUsecaseImpl) BulkCreateUsers(ctx context.Context, req *dto.BulkCrea
 		} else {
 			response.Failed++
 		}
+
+		// Update status
+		u.mu.Lock()
+		status.Processed++
+		status.Success = response.Success
+		status.Failed = response.Failed
+		u.mu.Unlock()
 	}
 
-	logger.Log.WithField("success", response.Success).
+	// Complete operation
+	endTime := time.Now()
+	u.mu.Lock()
+	status.Status = "completed"
+	status.EndTime = &endTime
+	status.Results = response
+
+	// Add to history
+	if u.operationHistory["users"] == nil {
+		u.operationHistory["users"] = make([]*BulkOperationHistory, 0)
+	}
+
+	history := &BulkOperationHistory{
+		ID:         operationId,
+		EntityType: "users",
+		Operation:  "bulk_create",
+		Status:     "completed",
+		Total:      response.Total,
+		Success:    response.Success,
+		Failed:     response.Failed,
+		Timestamp:  endTime,
+		Duration:   endTime.Sub(status.StartTime).String(),
+		Results:    response,
+	}
+	u.operationHistory["users"] = append(u.operationHistory["users"], history)
+
+	// Keep only last 50 operations
+	if len(u.operationHistory["users"]) > 50 {
+		u.operationHistory["users"] = u.operationHistory["users"][1:]
+	}
+	u.mu.Unlock()
+
+	logger.Log.WithField("operationId", operationId).
+		WithField("success", response.Success).
 		WithField("failed", response.Failed).
 		Info("Bulk user creation completed")
 
@@ -197,7 +286,9 @@ func (u *bulkUsecaseImpl) createUserWorker(ctx context.Context, userChan <-chan 
 }
 
 func (u *bulkUsecaseImpl) BulkUserActions(ctx context.Context, req *dto.BulkUserActionsRequest) (*dto.BulkActionResponse, error) {
-	logger.Log.WithField("userCount", len(req.Usernames)).
+	operationId := uuid.New().String()
+	logger.Log.WithField("operationId", operationId).
+		WithField("userCount", len(req.Usernames)).
 		WithField("action", req.Action).
 		Info("Starting bulk user actions")
 
@@ -251,7 +342,8 @@ func (u *bulkUsecaseImpl) BulkUserActions(ctx context.Context, req *dto.BulkUser
 		response.Results = append(response.Results, result)
 	}
 
-	logger.Log.WithField("success", response.Success).
+	logger.Log.WithField("operationId", operationId).
+		WithField("success", response.Success).
 		WithField("failed", response.Failed).
 		Info("Bulk user actions completed")
 
@@ -259,7 +351,9 @@ func (u *bulkUsecaseImpl) BulkUserActions(ctx context.Context, req *dto.BulkUser
 }
 
 func (u *bulkUsecaseImpl) BulkExtendUsers(ctx context.Context, req *dto.BulkUserExtendRequest) (*dto.BulkActionResponse, error) {
-	logger.Log.WithField("userCount", len(req.Usernames)).
+	operationId := uuid.New().String()
+	logger.Log.WithField("operationId", operationId).
+		WithField("userCount", len(req.Usernames)).
 		WithField("newExpiration", req.NewExpiration).
 		Info("Starting bulk user extension")
 
@@ -304,7 +398,8 @@ func (u *bulkUsecaseImpl) BulkExtendUsers(ctx context.Context, req *dto.BulkUser
 		response.Results = append(response.Results, result)
 	}
 
-	logger.Log.WithField("success", response.Success).
+	logger.Log.WithField("operationId", operationId).
+		WithField("success", response.Success).
 		WithField("failed", response.Failed).
 		Info("Bulk user extension completed")
 
@@ -384,7 +479,8 @@ func (u *bulkUsecaseImpl) ImportUsers(ctx context.Context, req *dto.ImportUsersR
 // =================== BULK GROUP OPERATIONS ===================
 
 func (u *bulkUsecaseImpl) BulkCreateGroups(ctx context.Context, req *dto.BulkCreateGroupsRequest) (*dto.BulkCreateGroupsResponse, error) {
-	logger.Log.WithField("groupCount", len(req.Groups)).Info("Starting bulk group creation")
+	operationId := uuid.New().String()
+	logger.Log.WithField("operationId", operationId).WithField("groupCount", len(req.Groups)).Info("Starting bulk group creation")
 
 	response := &dto.BulkCreateGroupsResponse{
 		Total:   len(req.Groups),
@@ -459,7 +555,8 @@ func (u *bulkUsecaseImpl) BulkCreateGroups(ctx context.Context, req *dto.BulkCre
 		response.Results = append(response.Results, result)
 	}
 
-	logger.Log.WithField("success", response.Success).
+	logger.Log.WithField("operationId", operationId).
+		WithField("success", response.Success).
 		WithField("failed", response.Failed).
 		Info("Bulk group creation completed")
 
@@ -467,7 +564,9 @@ func (u *bulkUsecaseImpl) BulkCreateGroups(ctx context.Context, req *dto.BulkCre
 }
 
 func (u *bulkUsecaseImpl) BulkGroupActions(ctx context.Context, req *dto.BulkGroupActionsRequest) (*dto.BulkGroupActionResponse, error) {
-	logger.Log.WithField("groupCount", len(req.GroupNames)).
+	operationId := uuid.New().String()
+	logger.Log.WithField("operationId", operationId).
+		WithField("groupCount", len(req.GroupNames)).
 		WithField("action", req.Action).
 		Info("Starting bulk group actions")
 
@@ -518,7 +617,8 @@ func (u *bulkUsecaseImpl) BulkGroupActions(ctx context.Context, req *dto.BulkGro
 		response.Results = append(response.Results, result)
 	}
 
-	logger.Log.WithField("success", response.Success).
+	logger.Log.WithField("operationId", operationId).
+		WithField("success", response.Success).
 		WithField("failed", response.Failed).
 		Info("Bulk group actions completed")
 
@@ -965,15 +1065,23 @@ func (u *bulkUsecaseImpl) parseXLSXFile(content []byte, entityType string) (inte
 	}
 
 	sheet := file.Sheets[0]
-	if len(sheet.Rows) < 2 {
+
+	// Get max row and col to iterate properly
+	maxRow := sheet.MaxRow
+	maxCol := sheet.MaxCol
+
+	if maxRow < 2 {
 		return nil, nil, fmt.Errorf("file must contain at least header and one data row")
 	}
 
-	// Get headers
-	headerRow := sheet.Rows[0]
-	headers := make([]string, len(headerRow.Cells))
-	for i, cell := range headerRow.Cells {
-		headers[i] = strings.TrimSpace(cell.String())
+	// Get headers from first row
+	headers := make([]string, maxCol)
+	for col := 0; col < maxCol; col++ {
+		cell, err := sheet.Cell(0, col)
+		if err != nil {
+			continue
+		}
+		headers[col] = strings.TrimSpace(cell.String())
 	}
 
 	var validationErrors []dto.ImportValidationError
@@ -981,18 +1089,18 @@ func (u *bulkUsecaseImpl) parseXLSXFile(content []byte, entityType string) (inte
 	if entityType == "users" {
 		var users []dto.CreateUserRequest
 
-		for i, row := range sheet.Rows[1:] {
-			rowNum := i + 2
-
+		for row := 1; row < maxRow; row++ {
+			rowNum := row + 1
 			user := dto.CreateUserRequest{}
 
-			for j, cell := range row.Cells {
-				if j >= len(headers) {
-					break
+			for col := 0; col < maxCol && col < len(headers); col++ {
+				cell, err := sheet.Cell(row, col)
+				if err != nil {
+					continue
 				}
 
 				value := strings.TrimSpace(cell.String())
-				switch strings.ToLower(headers[j]) {
+				switch strings.ToLower(headers[col]) {
 				case "username":
 					user.Username = value
 				case "email":
@@ -1020,6 +1128,11 @@ func (u *bulkUsecaseImpl) parseXLSXFile(content []byte, entityType string) (inte
 				}
 			}
 
+			// Skip empty rows
+			if user.Username == "" {
+				continue
+			}
+
 			// Validate user
 			if err := validator.Validate(&user); err != nil {
 				validationErrors = append(validationErrors, dto.ImportValidationError{
@@ -1038,18 +1151,18 @@ func (u *bulkUsecaseImpl) parseXLSXFile(content []byte, entityType string) (inte
 	} else if entityType == "groups" {
 		var groups []dto.CreateGroupRequest
 
-		for i, row := range sheet.Rows[1:] {
-			rowNum := i + 2
-
+		for row := 1; row < maxRow; row++ {
+			rowNum := row + 1
 			group := dto.CreateGroupRequest{}
 
-			for j, cell := range row.Cells {
-				if j >= len(headers) {
-					break
+			for col := 0; col < maxCol && col < len(headers); col++ {
+				cell, err := sheet.Cell(row, col)
+				if err != nil {
+					continue
 				}
 
 				value := strings.TrimSpace(cell.String())
-				switch strings.ToLower(headers[j]) {
+				switch strings.ToLower(headers[col]) {
 				case "group_name":
 					group.GroupName = value
 				case "auth_method":
@@ -1062,6 +1175,11 @@ func (u *bulkUsecaseImpl) parseXLSXFile(content []byte, entityType string) (inte
 						}
 					}
 				}
+			}
+
+			// Skip empty rows
+			if group.GroupName == "" {
+				continue
 			}
 
 			// Validate group
@@ -1141,26 +1259,96 @@ func (u *bulkUsecaseImpl) ValidateGroupBatch(groups []dto.CreateGroupRequest) ([
 // =================== OPERATION TRACKING ===================
 
 func (u *bulkUsecaseImpl) GetBulkOperationStatus(ctx context.Context, operationId string) (interface{}, error) {
-	// TODO: Implement operation status tracking
-	// This could use Redis or database to track long-running operations
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+
+	status, exists := u.operationStatus[operationId]
+	if !exists {
+		return nil, errors.NotFound("Operation not found", nil)
+	}
+
 	return map[string]interface{}{
-		"operationId": operationId,
-		"status":      "completed",
-		"message":     "Operation tracking not implemented yet",
+		"id":         status.ID,
+		"entityType": status.EntityType,
+		"operation":  status.Operation,
+		"status":     status.Status,
+		"total":      status.Total,
+		"processed":  status.Processed,
+		"success":    status.Success,
+		"failed":     status.Failed,
+		"startTime":  status.StartTime,
+		"endTime":    status.EndTime,
+		"duration":   u.calculateDuration(status.StartTime, status.EndTime),
+		"error":      status.Error,
+		"progress":   u.calculateProgress(status.Processed, status.Total),
 	}, nil
 }
 
 func (u *bulkUsecaseImpl) GetBulkOperationHistory(ctx context.Context, entityType string, limit int) ([]interface{}, error) {
-	// TODO: Implement operation history tracking
-	// This could use database to store operation history
-	return []interface{}{
-		map[string]interface{}{
-			"operationId": "bulk_001",
-			"entityType":  entityType,
-			"operation":   "bulk_create",
-			"timestamp":   time.Now().UTC(),
-			"success":     true,
-			"message":     "Operation history not implemented yet",
-		},
-	}, nil
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+
+	history, exists := u.operationHistory[entityType]
+	if !exists || len(history) == 0 {
+		return []interface{}{}, nil
+	}
+
+	// Sort by timestamp (newest first)
+	sortedHistory := make([]*BulkOperationHistory, len(history))
+	copy(sortedHistory, history)
+
+	for i := 0; i < len(sortedHistory)-1; i++ {
+		for j := i + 1; j < len(sortedHistory); j++ {
+			if sortedHistory[i].Timestamp.Before(sortedHistory[j].Timestamp) {
+				sortedHistory[i], sortedHistory[j] = sortedHistory[j], sortedHistory[i]
+			}
+		}
+	}
+
+	// Apply limit
+	if limit > 0 && len(sortedHistory) > limit {
+		sortedHistory = sortedHistory[:limit]
+	}
+
+	// Convert to interface{}
+	result := make([]interface{}, len(sortedHistory))
+	for i, h := range sortedHistory {
+		result[i] = map[string]interface{}{
+			"id":          h.ID,
+			"entityType":  h.EntityType,
+			"operation":   h.Operation,
+			"status":      h.Status,
+			"total":       h.Total,
+			"success":     h.Success,
+			"failed":      h.Failed,
+			"timestamp":   h.Timestamp,
+			"duration":    h.Duration,
+			"successRate": u.calculateSuccessRate(h.Success, h.Total),
+		}
+	}
+
+	return result, nil
+}
+
+// =================== HELPER METHODS ===================
+
+func (u *bulkUsecaseImpl) calculateDuration(startTime time.Time, endTime *time.Time) string {
+	if endTime == nil {
+		return time.Since(startTime).String()
+	}
+	return endTime.Sub(startTime).String()
+}
+
+func (u *bulkUsecaseImpl) calculateProgress(processed, total int) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(processed) / float64(total) * 100
+}
+
+func (u *bulkUsecaseImpl) calculateSuccessRate(success, total int) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(success) / float64(total) * 100
 }

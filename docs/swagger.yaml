@@ -1,8 +1,418 @@
 basePath: /
 definitions:
+  dto.AdvancedGroupSearchRequest:
+    properties:
+      accessControlPattern:
+        example: 192.168.1.0/24
+        type: string
+      authMethod:
+        enum:
+        - ldap
+        - local
+        example: local
+        type: string
+      createdAfter:
+        description: Date range filters
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      createdBefore:
+        example: "2024-12-31T23:59:59Z"
+        type: string
+      exactMatch:
+        example: false
+        type: boolean
+      groupName:
+        description: Basic filters
+        example: TEST
+        type: string
+      hasAccessControl:
+        description: Access control filters
+        example: true
+        type: boolean
+      hasMFA:
+        example: true
+        type: boolean
+      hasMembers:
+        example: true
+        type: boolean
+      includeDisabled:
+        description: Advanced options
+        example: false
+        type: boolean
+      includeMemberCount:
+        example: true
+        type: boolean
+      isEnabled:
+        description: Status filters
+        example: true
+        type: boolean
+      limit:
+        example: 25
+        maximum: 500
+        minimum: 1
+        type: integer
+      maxMemberCount:
+        example: 100
+        minimum: 0
+        type: integer
+      minMemberCount:
+        description: Member count filters
+        example: 1
+        minimum: 0
+        type: integer
+      page:
+        description: Pagination
+        example: 1
+        minimum: 1
+        type: integer
+      role:
+        enum:
+        - Admin
+        - User
+        example: User
+        type: string
+      searchText:
+        description: Text search
+        example: admin
+        type: string
+      sortBy:
+        description: Sorting
+        enum:
+        - groupName
+        - authMethod
+        - role
+        - memberCount
+        - createdAt
+        example: groupName
+        type: string
+      sortOrder:
+        enum:
+        - asc
+        - desc
+        example: asc
+        type: string
+    type: object
+  dto.AdvancedGroupSearchResponse:
+    properties:
+      filters:
+        $ref: '#/definitions/dto.AdvancedGroupSearchRequest'
+      groups:
+        items:
+          $ref: '#/definitions/dto.EnhancedGroupResponse'
+        type: array
+      limit:
+        example: 25
+        type: integer
+      metadata:
+        $ref: '#/definitions/dto.GroupSearchMetadata'
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 25
+        type: integer
+      totalPages:
+        example: 1
+        type: integer
+    type: object
+  dto.AdvancedUserSearchRequest:
+    properties:
+      accessControlPattern:
+        example: 192.168.1.0/24
+        type: string
+      authMethod:
+        enum:
+        - ldap
+        - local
+        example: local
+        type: string
+      createdAfter:
+        description: Date range filters
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      createdBefore:
+        example: "2024-12-31T23:59:59Z"
+        type: string
+      email:
+        example: test@example.com
+        type: string
+      exactMatch:
+        example: false
+        type: boolean
+      expirationAfter:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      expirationBefore:
+        example: "2024-12-31T23:59:59Z"
+        type: string
+      expiringInDays:
+        example: 30
+        maximum: 365
+        minimum: 0
+        type: integer
+      groupName:
+        example: TEST_GROUP
+        type: string
+      hasAccessControl:
+        description: Access control filters
+        example: true
+        type: boolean
+      hasMFA:
+        example: true
+        type: boolean
+      hasMacAddress:
+        description: MAC address filters
+        example: true
+        type: boolean
+      includeDisabled:
+        description: Advanced options
+        example: false
+        type: boolean
+      isEnabled:
+        description: Status filters
+        example: true
+        type: boolean
+      isExpired:
+        description: Expiration filters
+        example: false
+        type: boolean
+      limit:
+        example: 25
+        maximum: 1000
+        minimum: 1
+        type: integer
+      macAddressPattern:
+        example: "00:11:22"
+        type: string
+      page:
+        description: Pagination
+        example: 1
+        minimum: 1
+        type: integer
+      role:
+        enum:
+        - Admin
+        - User
+        example: User
+        type: string
+      searchText:
+        description: Text search
+        example: admin
+        type: string
+      sortBy:
+        description: Sorting
+        enum:
+        - username
+        - email
+        - authMethod
+        - role
+        - groupName
+        - userExpiration
+        example: username
+        type: string
+      sortOrder:
+        enum:
+        - asc
+        - desc
+        example: asc
+        type: string
+      username:
+        description: Basic filters
+        example: testuser
+        type: string
+    type: object
+  dto.AdvancedUserSearchResponse:
+    properties:
+      filters:
+        $ref: '#/definitions/dto.AdvancedUserSearchRequest'
+      limit:
+        example: 25
+        type: integer
+      metadata:
+        $ref: '#/definitions/dto.UserSearchMetadata'
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 150
+        type: integer
+      totalPages:
+        example: 6
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/dto.UserResponse'
+        type: array
+    type: object
+  dto.BulkActionResponse:
+    properties:
+      failed:
+        example: 2
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/dto.BulkUserOperationResult'
+        type: array
+      success:
+        example: 8
+        type: integer
+      total:
+        example: 10
+        type: integer
+    type: object
+  dto.BulkCreateGroupsRequest:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/dto.CreateGroupRequest'
+        maxItems: 50
+        minItems: 1
+        type: array
+    required:
+    - groups
+    type: object
+  dto.BulkCreateGroupsResponse:
+    properties:
+      failed:
+        example: 1
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/dto.BulkGroupOperationResult'
+        type: array
+      success:
+        example: 4
+        type: integer
+      total:
+        example: 5
+        type: integer
+    type: object
+  dto.BulkCreateUsersRequest:
+    properties:
+      users:
+        items:
+          $ref: '#/definitions/dto.CreateUserRequest'
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - users
+    type: object
+  dto.BulkCreateUsersResponse:
+    properties:
+      failed:
+        example: 2
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/dto.BulkUserOperationResult'
+        type: array
+      success:
+        example: 8
+        type: integer
+      total:
+        example: 10
+        type: integer
+    type: object
+  dto.BulkGroupActionResponse:
+    properties:
+      failed:
+        example: 1
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/dto.BulkGroupOperationResult'
+        type: array
+      success:
+        example: 4
+        type: integer
+      total:
+        example: 5
+        type: integer
+    type: object
+  dto.BulkGroupActionsRequest:
+    properties:
+      action:
+        enum:
+        - enable
+        - disable
+        type: string
+      groupNames:
+        items:
+          type: string
+        maxItems: 50
+        minItems: 1
+        type: array
+    required:
+    - action
+    - groupNames
+    type: object
+  dto.BulkGroupOperationResult:
+    properties:
+      error:
+        example: ""
+        type: string
+      groupName:
+        example: TEST_GROUP
+        type: string
+      message:
+        example: Group created successfully
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
+  dto.BulkUserActionsRequest:
+    properties:
+      action:
+        enum:
+        - enable
+        - disable
+        - reset-otp
+        type: string
+      usernames:
+        items:
+          type: string
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - action
+    - usernames
+    type: object
+  dto.BulkUserExtendRequest:
+    properties:
+      newExpiration:
+        type: string
+      usernames:
+        items:
+          type: string
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - newExpiration
+    - usernames
+    type: object
+  dto.BulkUserOperationResult:
+    properties:
+      error:
+        example: ""
+        type: string
+      message:
+        example: User created successfully
+        type: string
+      success:
+        example: true
+        type: boolean
+      username:
+        example: testuser
+        type: string
+    type: object
   dto.ChangePasswordRequest:
     properties:
       password:
+        example: NewSecurePass123!
         minLength: 8
         type: string
     required:
@@ -30,6 +440,8 @@ definitions:
   dto.CreateUserRequest:
     properties:
       accessControl:
+        example:
+        - 192.168.1.0/24
         items:
           type: string
         type: array
@@ -37,19 +449,25 @@ definitions:
         enum:
         - ldap
         - local
+        example: local
         type: string
       email:
+        example: testuser@example.com
         type: string
       macAddresses:
+        example:
+        - 5E:CD:C9:D4:88:65
         items:
           type: string
         type: array
       password:
-        minLength: 8
+        example: SecurePass123!
         type: string
       userExpiration:
+        example: 31/12/2024
         type: string
       username:
+        example: testuser
         maxLength: 30
         minLength: 3
         type: string
@@ -59,6 +477,35 @@ definitions:
     - macAddresses
     - userExpiration
     - username
+    type: object
+  dto.EnhancedGroupResponse:
+    properties:
+      accessControl:
+        items:
+          type: string
+        type: array
+      authMethod:
+        type: string
+      createdAt:
+        example: "2024-01-15T10:30:00Z"
+        type: string
+      denyAccess:
+        type: boolean
+      groupName:
+        type: string
+      lastModified:
+        example: "2024-03-10T14:22:00Z"
+        type: string
+      lastUsed:
+        example: "2024-06-01T08:15:00Z"
+        type: string
+      memberCount:
+        example: 15
+        type: integer
+      mfa:
+        type: boolean
+      role:
+        type: string
     type: object
   dto.ErrorResponse:
     properties:
@@ -74,6 +521,21 @@ definitions:
             example: 400
             type: integer
         type: object
+    type: object
+  dto.ExpirationStatistics:
+    properties:
+      expiredCount:
+        example: 5
+        type: integer
+      expiringIn7Days:
+        example: 10
+        type: integer
+      expiringIn30Days:
+        example: 25
+        type: integer
+      expiringIn90Days:
+        example: 45
+        type: integer
     type: object
   dto.GroupListResponse:
     properties:
@@ -105,6 +567,73 @@ definitions:
       role:
         type: string
     type: object
+  dto.GroupSearchMetadata:
+    properties:
+      authMethodStats:
+        additionalProperties:
+          type: integer
+        type: object
+      filteredTotal:
+        example: 25
+        type: integer
+      memberCountStats:
+        $ref: '#/definitions/dto.MemberCountStatistics'
+      roleStats:
+        additionalProperties:
+          type: integer
+        type: object
+      searchDuration:
+        example: 45ms
+        type: string
+      unfilteredTotal:
+        example: 100
+        type: integer
+    type: object
+  dto.ImportResponse:
+    properties:
+      dryRun:
+        example: false
+        type: boolean
+      failureCount:
+        example: 5
+        type: integer
+      invalidRecords:
+        example: 5
+        type: integer
+      processedRecords:
+        example: 95
+        type: integer
+      results:
+        description: BulkCreateUsersResponse or BulkCreateGroupsResponse
+      successCount:
+        example: 90
+        type: integer
+      total:
+        example: 100
+        type: integer
+      validRecords:
+        example: 95
+        type: integer
+      validationErrors:
+        items:
+          $ref: '#/definitions/dto.ImportValidationError'
+        type: array
+    type: object
+  dto.ImportValidationError:
+    properties:
+      field:
+        example: email
+        type: string
+      message:
+        example: Invalid email format
+        type: string
+      row:
+        example: 3
+        type: integer
+      value:
+        example: invalid-email
+        type: string
+    type: object
   dto.LoginRequest:
     properties:
       password:
@@ -126,6 +655,30 @@ definitions:
         type: string
       user:
         $ref: '#/definitions/dto.UserInfo'
+    type: object
+  dto.MemberCountStatistics:
+    properties:
+      averageSize:
+        example: 12.5
+        type: number
+      emptyGroups:
+        example: 3
+        type: integer
+      largeGroups:
+        description: 50+ members
+        example: 4
+        type: integer
+      maxSize:
+        example: 75
+        type: integer
+      mediumGroups:
+        description: 11-50 members
+        example: 8
+        type: integer
+      smallGroups:
+        description: 1-10 members
+        example: 10
+        type: integer
     type: object
   dto.MessageResponse:
     properties:
@@ -155,6 +708,139 @@ definitions:
       user:
         $ref: '#/definitions/dto.UserInfo'
     type: object
+  dto.SavedSearchRequest:
+    properties:
+      description:
+        example: Users expiring in the next 30 days
+        type: string
+      filters: {}
+      isPublic:
+        example: false
+        type: boolean
+      name:
+        example: Expiring Users Next Month
+        maxLength: 50
+        minLength: 3
+        type: string
+      searchType:
+        enum:
+        - users
+        - groups
+        example: users
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+    required:
+    - name
+    - searchType
+    type: object
+  dto.SavedSearchResponse:
+    properties:
+      createdAt:
+        example: "2024-01-15T10:30:00Z"
+        type: string
+      createdBy:
+        example: admin
+        type: string
+      description:
+        example: Users expiring in the next 30 days
+        type: string
+      filters: {}
+      id:
+        description: Keep both for compatibility
+        example: search_123
+        type: string
+      isPublic:
+        example: false
+        type: boolean
+      lastUsed:
+        example: "2024-06-01T08:15:00Z"
+        type: string
+      name:
+        example: Expiring Users Next Month
+        type: string
+      searchId:
+        example: search_123
+        type: string
+      searchType:
+        example: users
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      useCount:
+        example: 15
+        type: integer
+    type: object
+  dto.SearchSuggestion:
+    properties:
+      count:
+        example: 1
+        type: integer
+      description:
+        example: 'User: testuser (test@example.com)'
+        type: string
+      label:
+        example: testuser (test@example.com)
+        type: string
+      matchCount:
+        example: 1
+        type: integer
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      text:
+        example: testuser
+        type: string
+      type:
+        example: username
+        type: string
+      value:
+        example: testuser
+        type: string
+    type: object
+  dto.SearchSuggestionsRequest:
+    properties:
+      field:
+        enum:
+        - username
+        - email
+        - groupName
+        example: username
+        type: string
+      limit:
+        example: 10
+        maximum: 20
+        minimum: 1
+        type: integer
+      query:
+        example: test
+        minLength: 1
+        type: string
+      searchType:
+        enum:
+        - users
+        - groups
+        example: users
+        type: string
+    required:
+    - query
+    - searchType
+    type: object
+  dto.SearchSuggestionsResponse:
+    properties:
+      suggestions:
+        items:
+          $ref: '#/definitions/dto.SearchSuggestion'
+        type: array
+      total:
+        example: 5
+        type: integer
+    type: object
   dto.UpdateGroupRequest:
     properties:
       accessControl:
@@ -167,28 +853,40 @@ definitions:
   dto.UpdateUserRequest:
     properties:
       accessControl:
+        example:
+        - 192.168.1.0/24
         items:
           type: string
         type: array
       denyAccess:
+        example: false
         type: boolean
       macAddresses:
+        example:
+        - 5E:CD:C9:D4:88:65
         items:
           type: string
         type: array
       password:
+        example: NewSecurePass123!
         minLength: 8
         type: string
       userExpiration:
+        example: 31/12/2025
         type: string
     type: object
   dto.UserExpirationResponse:
     properties:
       count:
+        example: 2
         type: integer
       days:
+        example: 7
         type: integer
       emails:
+        example:
+        - user1@example.com
+        - user2@example.com
         items:
           type: string
         type: array
@@ -205,10 +903,13 @@ definitions:
   dto.UserListResponse:
     properties:
       limit:
+        example: 10
         type: integer
       page:
+        example: 1
         type: integer
       total:
+        example: 50
         type: integer
       users:
         items:
@@ -218,29 +919,67 @@ definitions:
   dto.UserResponse:
     properties:
       accessControl:
+        example:
+        - 192.168.1.0/24
         items:
           type: string
         type: array
       authMethod:
+        example: local
         type: string
       denyAccess:
+        example: false
         type: boolean
       email:
+        example: testuser@example.com
         type: string
       groupName:
+        example: TEST_GR
         type: string
       macAddresses:
+        example:
+        - 5E:CD:C9:D4:88:65
         items:
           type: string
         type: array
       mfa:
+        example: true
         type: boolean
       role:
+        example: User
         type: string
       userExpiration:
+        example: 31/12/2024
         type: string
       username:
+        example: testuser
         type: string
+    type: object
+  dto.UserSearchMetadata:
+    properties:
+      authMethodStats:
+        additionalProperties:
+          type: integer
+        type: object
+      expirationStats:
+        $ref: '#/definitions/dto.ExpirationStatistics'
+      filteredTotal:
+        example: 150
+        type: integer
+      groupStats:
+        additionalProperties:
+          type: integer
+        type: object
+      roleStats:
+        additionalProperties:
+          type: integer
+        type: object
+      searchDuration:
+        example: 125ms
+        type: string
+      unfilteredTotal:
+        example: 500
+        type: integer
     type: object
 host: localhost:8080
 info:
@@ -248,14 +987,297 @@ info:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: OpenVPN Access Server Management API
+  description: OpenVPN Access Server Management API with Bulk Operations and Advanced
+    Search
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   termsOfService: http://swagger.io/terms/
-  title: GoVPN API
-  version: "1.0"
+  title: GoVPN API Enhanced
+  version: 1.1.0
 paths:
+  /api/bulk/groups/actions:
+    post:
+      consumes:
+      - application/json
+      description: Perform actions on multiple groups (enable/disable)
+      parameters:
+      - description: Bulk group actions data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BulkGroupActionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BulkGroupActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk group actions
+      tags:
+      - Bulk Operations
+  /api/bulk/groups/create:
+    post:
+      consumes:
+      - application/json
+      description: Create multiple groups at once
+      parameters:
+      - description: Bulk group creation data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BulkCreateGroupsRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.BulkCreateGroupsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk create groups
+      tags:
+      - Bulk Operations
+  /api/bulk/groups/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Import groups from CSV, JSON, or XLSX file
+      parameters:
+      - description: Groups file (CSV/JSON/XLSX)
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: File format
+        enum:
+        - csv
+        - json
+        - xlsx
+        in: formData
+        name: format
+        type: string
+      - description: Dry run mode (validate only)
+        in: formData
+        name: dryRun
+        type: boolean
+      - description: Override existing groups
+        in: formData
+        name: override
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Import groups from file
+      tags:
+      - Bulk Operations
+  /api/bulk/groups/template:
+    get:
+      description: Download template file for group import
+      parameters:
+      - default: csv
+        description: Template format
+        enum:
+        - csv
+        - xlsx
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Group template file
+          schema:
+            type: file
+      security:
+      - BearerAuth: []
+      summary: Export group template
+      tags:
+      - Bulk Operations
+  /api/bulk/users/actions:
+    post:
+      consumes:
+      - application/json
+      description: Perform actions on multiple users (enable/disable/reset-otp)
+      parameters:
+      - description: Bulk user actions data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BulkUserActionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BulkActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk user actions
+      tags:
+      - Bulk Operations
+  /api/bulk/users/create:
+    post:
+      consumes:
+      - application/json
+      description: Create multiple users at once
+      parameters:
+      - description: Bulk user creation data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BulkCreateUsersRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.BulkCreateUsersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request too large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk create users
+      tags:
+      - Bulk Operations
+  /api/bulk/users/extend:
+    post:
+      consumes:
+      - application/json
+      description: Extend expiration date for multiple users
+      parameters:
+      - description: Bulk user extension data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BulkUserExtendRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BulkActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk extend user expiration
+      tags:
+      - Bulk Operations
+  /api/bulk/users/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Import users from CSV, JSON, or XLSX file
+      parameters:
+      - description: Users file (CSV/JSON/XLSX)
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: File format
+        enum:
+        - csv
+        - json
+        - xlsx
+        in: formData
+        name: format
+        type: string
+      - description: Dry run mode (validate only)
+        in: formData
+        name: dryRun
+        type: boolean
+      - description: Override existing users
+        in: formData
+        name: override
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: File too large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Import users from file
+      tags:
+      - Bulk Operations
+  /api/bulk/users/template:
+    get:
+      description: Download template file for user import
+      parameters:
+      - default: csv
+        description: Template format
+        enum:
+        - csv
+        - xlsx
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: User template file
+          schema:
+            type: file
+      security:
+      - BearerAuth: []
+      summary: Export user template
+      tags:
+      - Bulk Operations
   /api/groups:
     get:
       description: Get list of groups with optional filtering
@@ -447,6 +1469,299 @@ paths:
       summary: Perform group action
       tags:
       - Groups
+  /api/search/analytics:
+    get:
+      description: Get analytics about search usage and patterns
+      parameters:
+      - default: week
+        description: Analytics period
+        enum:
+        - day
+        - week
+        - month
+        in: query
+        name: period
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Search analytics data
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get search analytics
+      tags:
+      - Advanced Search
+  /api/search/export:
+    post:
+      consumes:
+      - application/json
+      description: Export advanced search results to file
+      parameters:
+      - default: csv
+        description: Export format
+        enum:
+        - csv
+        - xlsx
+        - json
+        in: query
+        name: format
+        type: string
+      - description: Search criteria for export
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AdvancedUserSearchRequest'
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Exported search results
+          schema:
+            type: file
+      security:
+      - BearerAuth: []
+      summary: Export search results
+      tags:
+      - Advanced Search
+  /api/search/groups:
+    post:
+      consumes:
+      - application/json
+      description: Search groups with complex filters and sorting
+      parameters:
+      - description: Advanced search criteria
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AdvancedGroupSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AdvancedGroupSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Advanced group search
+      tags:
+      - Advanced Search
+  /api/search/quick:
+    get:
+      description: Perform a quick text search across users and groups
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: all
+        description: Search type
+        enum:
+        - users
+        - groups
+        - all
+        in: query
+        name: type
+        type: string
+      - default: 20
+        description: Result limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Quick search results
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Quick search
+      tags:
+      - Advanced Search
+  /api/search/saved:
+    get:
+      description: Get list of saved searches for current user
+      parameters:
+      - description: Filter by search type
+        enum:
+        - users
+        - groups
+        in: query
+        name: searchType
+        type: string
+      - description: Include public saved searches
+        in: query
+        name: includePublic
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.SavedSearchResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Get saved searches
+      tags:
+      - Advanced Search
+    post:
+      consumes:
+      - application/json
+      description: Save frequently used search criteria
+      parameters:
+      - description: Search to save
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SavedSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.SavedSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save search query
+      tags:
+      - Advanced Search
+  /api/search/saved/{searchId}:
+    delete:
+      description: Delete a saved search
+      parameters:
+      - description: Saved search ID
+        in: path
+        name: searchId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete saved search
+      tags:
+      - Advanced Search
+  /api/search/saved/{searchId}/execute:
+    get:
+      description: Execute a previously saved search
+      parameters:
+      - description: Saved search ID
+        in: path
+        name: searchId
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 50
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group search results
+          schema:
+            $ref: '#/definitions/dto.AdvancedGroupSearchResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Execute saved search
+      tags:
+      - Advanced Search
+  /api/search/suggestions:
+    post:
+      consumes:
+      - application/json
+      description: Get autocomplete suggestions for search fields
+      parameters:
+      - description: Search suggestions criteria
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SearchSuggestionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SearchSuggestionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get search suggestions
+      tags:
+      - Advanced Search
+  /api/search/users:
+    post:
+      consumes:
+      - application/json
+      description: Search users with complex filters and sorting
+      parameters:
+      - description: Advanced search criteria
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AdvancedUserSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AdvancedUserSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Advanced user search
+      tags:
+      - Advanced Search
   /api/users:
     get:
       description: Get list of users with optional filtering
@@ -459,11 +1774,11 @@ paths:
         in: query
         name: email
         type: string
-      - description: Filter by auth method
+      - description: Filter by auth method (local/ldap)
         in: query
         name: authMethod
         type: string
-      - description: Filter by role
+      - description: Filter by role (Admin/User)
         in: query
         name: role
         type: string
@@ -496,7 +1811,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new VPN user
+      description: Create a new VPN user (local or LDAP authentication)
       parameters:
       - description: User creation data
         in: body
@@ -755,7 +2070,7 @@ paths:
       - Authentication
 securityDefinitions:
   BearerAuth:
-    description: Type "Bearer" followed by a space and JWT token.
+    description: Type "Bearer" followed by a space and RSA256 JWT token.
     in: header
     name: Authorization
     type: apiKey
