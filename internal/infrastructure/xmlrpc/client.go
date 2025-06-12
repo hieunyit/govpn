@@ -82,7 +82,6 @@ func (c *Client) RunStart() error {
 	if !c.isSuccessResponse(string(body)) {
 		return fmt.Errorf("run start failed: %s", string(body))
 	}
-
 	return nil
 }
 

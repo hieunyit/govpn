@@ -751,15 +751,15 @@ func (u *bulkUsecaseImpl) generateUserCSVTemplate() (string, []byte, error) {
 
 	// Write headers
 	headers := []string{
-		"username", "email", "password", "auth_method",
+		"username", "email", "group_name", "password", "auth_method",
 		"user_expiration", "mac_addresses", "access_control",
 	}
 	writer.Write(headers)
 
 	// Write sample data
 	sampleData := [][]string{
-		{"testuser1", "test1@example.com", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24"},
-		{"ldapuser1", "ldap1@company.com", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8"},
+		{"testuser1", "test1@example.com", "Group", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24"},
+		{"ldapuser1", "ldap1@company.com", "Group", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8"},
 	}
 
 	for _, row := range sampleData {
@@ -805,7 +805,7 @@ func (u *bulkUsecaseImpl) generateUserXLSXTemplate() (string, []byte, error) {
 
 	// Headers
 	headers := []string{
-		"username", "email", "password", "auth_method",
+		"username", "email", "group_name", "password", "auth_method",
 		"user_expiration", "mac_addresses", "access_control",
 	}
 
@@ -818,8 +818,8 @@ func (u *bulkUsecaseImpl) generateUserXLSXTemplate() (string, []byte, error) {
 
 	// Sample data
 	sampleData := [][]string{
-		{"testuser1", "test1@example.com", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24"},
-		{"ldapuser1", "ldap1@company.com", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8"},
+		{"testuser1", "test1@example.com", "Group", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24"},
+		{"ldapuser1", "ldap1@company.com", "Group", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8"},
 	}
 
 	for _, rowData := range sampleData {
@@ -935,6 +935,8 @@ func (u *bulkUsecaseImpl) parseCSVFile(content []byte, entityType string) (inter
 					user.Username = value
 				case "email":
 					user.Email = value
+				case "group_name":
+					user.GroupName = value
 				case "password":
 					user.Password = value
 				case "auth_method":
@@ -1131,6 +1133,8 @@ func (u *bulkUsecaseImpl) parseXLSXFile(content []byte, entityType string) (inte
 					user.Username = value
 				case "email":
 					user.Email = value
+				case "group_name":
+					user.GroupName = value
 				case "password":
 					user.Password = value
 				case "auth_method":
