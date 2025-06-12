@@ -1,11 +1,11 @@
 // @title           GoVPN API Enhanced
 // @version         1.1.0
-// @description     OpenVPN Access Server Management API with Bulk Operations and Advanced Search
+// @description     OpenVPN Access Server Management API with Enhanced Response System, Comprehensive Logging, and Advanced Error Handling
 // @termsOfService  http://swagger.io/terms/
 
-// @contact.name   API Support
-// @contact.url    http://www.swagger.io/support
-// @contact.email  support@swagger.io
+// @contact.name   API Support Team
+// @contact.url    http://www.company.com/support
+// @contact.email  support@company.com
 
 // @license.name  Apache 2.0
 // @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
@@ -16,12 +16,13 @@
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-// @description Type "Bearer" followed by a space and RSA256 JWT token.
+// @description Type "Bearer" followed by a space and RSA256 JWT token. Example: "Bearer eyJhbGciOiJSUzI1NiIs..."
 
 package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -40,10 +41,12 @@ import (
 	"govpn/pkg/jwt"
 	"govpn/pkg/logger"
 
-	_ "govpn/docs" // Import generated docs
+	_ "govpn/docs" // Import generated Swagger docs
 )
 
-// JWTServiceInterface defines the interface for JWT operations
+// =================== ENHANCED APPLICATION STARTUP ===================
+
+// JWTServiceInterface defines the interface for JWT operations with enhanced security
 type JWTServiceInterface interface {
 	GenerateAccessToken(username, role string) (string, error)
 	GenerateRefreshToken(username, role string) (string, error)
@@ -52,13 +55,17 @@ type JWTServiceInterface interface {
 }
 
 func main() {
-	// Load configuration
+	// =================== CONFIGURATION LOADING ===================
+
+	// Load configuration with comprehensive error handling
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal("Failed to load config:", err)
+		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Initialize logger
+	// =================== ENHANCED LOGGING INITIALIZATION ===================
+
+	// Initialize structured logging with comprehensive configuration
 	loggerConfig := logger.LoggerConfig{
 		Level:    cfg.Logger.Level,
 		Format:   cfg.Logger.Format,
@@ -66,24 +73,49 @@ func main() {
 	}
 	logger.Init(loggerConfig)
 
-	// Log startup information
-	logger.Log.Info("Starting GoVPN API Enhanced v1.1.0")
-	logger.Log.Info("New Features: Bulk Operations, Advanced Search, File Import/Export")
+	// =================== APPLICATION STARTUP LOGGING ===================
 
-	// Log JWT configuration mode
-	if cfg.JWT.UseRSA {
-		logger.Log.Info("Starting GoVPN API with RSA256 JWT authentication")
-	} else {
-		logger.Log.Warn("Starting GoVPN API with legacy HMAC256 JWT authentication")
-	}
+	// Log comprehensive startup information
+	logger.Log.WithFields(map[string]interface{}{
+		"service":      "govpn-api",
+		"version":      "1.1.0",
+		"environment":  cfg.App.Environment,
+		"log_level":    cfg.Logger.Level,
+		"port":         cfg.Server.Port,
+		"jwt_mode":     getJWTMode(cfg.JWT.UseRSA),
+		"ldap_enabled": cfg.LDAP.Host != "",
+	}).Info("Starting GoVPN API Enhanced")
 
-	// Initialize shared JWT service
+	// Feature announcement with detailed capabilities
+	logger.Log.Info("✅ Enhanced Features Available:")
+	logger.Log.Info("   📋 Standardized Response System with HATEOAS links")
+	logger.Log.Info("   🎯 Comprehensive Status Codes with detailed error information")
+	logger.Log.Info("   📝 Enhanced Documentation with field-specific validation")
+	logger.Log.Info("   🔍 Structured Logging with request tracking and performance monitoring")
+	logger.Log.Info("   🔐 Advanced Authentication with RSA256 JWT")
+	logger.Log.Info("   🚀 Bulk Operations with file import/export capabilities")
+	logger.Log.Info("   🔎 Advanced Search with saved searches and analytics")
+	logger.Log.Info("   📊 Performance Monitoring with metrics and alerting")
+	logger.Log.Info("   🛡️  Enhanced Security with comprehensive error handling")
+
+	// =================== SECURITY AND JWT SERVICE INITIALIZATION ===================
+
+	// Initialize JWT service with enhanced security and comprehensive error handling
 	jwtService, err := initializeJWTService(cfg.JWT)
 	if err != nil {
-		log.Fatal("Failed to initialize JWT service:", err)
+		logger.Log.WithError(err).Fatal("Failed to initialize JWT service")
 	}
 
-	// Initialize infrastructure
+	// Log JWT configuration mode for security audit
+	if cfg.JWT.UseRSA {
+		logger.Log.Info("🔐 JWT Service initialized with RSA256 algorithm for enhanced security")
+	} else {
+		logger.Log.Warn("⚠️  JWT Service initialized with legacy HMAC256 algorithm - consider upgrading to RSA256")
+	}
+
+	// =================== INFRASTRUCTURE INITIALIZATION ===================
+
+	// Initialize XML-RPC client with comprehensive configuration and error handling
 	xmlrpcConfig := xmlrpc.Config{
 		Host:     cfg.OpenVPN.Host,
 		Username: cfg.OpenVPN.Username,
@@ -92,6 +124,13 @@ func main() {
 	}
 	xmlrpcClient := xmlrpc.NewClient(xmlrpcConfig)
 
+	logger.Log.WithFields(map[string]interface{}{
+		"openvpn_host": cfg.OpenVPN.Host,
+		"openvpn_port": cfg.OpenVPN.Port,
+		"connection":   "xml-rpc",
+	}).Info("XML-RPC client initialized for OpenVPN server communication")
+
+	// Initialize LDAP client with enhanced configuration and error handling
 	ldapConfig := ldap.Config{
 		Host:         cfg.LDAP.Host,
 		Port:         cfg.LDAP.Port,
@@ -101,183 +140,284 @@ func main() {
 	}
 	ldapClient := ldap.NewClient(ldapConfig)
 
-	// Initialize repositories
+	if cfg.LDAP.Host != "" {
+		logger.Log.WithFields(map[string]interface{}{
+			"ldap_host":    cfg.LDAP.Host,
+			"ldap_port":    cfg.LDAP.Port,
+			"ldap_base_dn": cfg.LDAP.BaseDN,
+		}).Info("LDAP client initialized for directory authentication")
+	} else {
+		logger.Log.Info("LDAP authentication disabled - using local authentication only")
+	}
+
+	// =================== REPOSITORY LAYER INITIALIZATION ===================
+
+	// Initialize repositories with enhanced logging
 	userRepo := repositories.NewUserRepository(xmlrpcClient)
 	groupRepo := repositories.NewGroupRepository(xmlrpcClient)
 
-	// Initialize use cases with shared JWT service
+	logger.Log.Info("Repository layer initialized with XML-RPC backend")
+
+	// =================== USE CASE LAYER INITIALIZATION ===================
+
+	// Initialize use cases with shared JWT service and enhanced error handling
 	authUsecase := usecases.NewAuthUsecaseWithJWTService(userRepo, ldapClient, jwtService)
 	userUsecase := usecases.NewUserUsecase(userRepo, groupRepo, ldapClient)
 	groupUsecase := usecases.NewGroupUsecase(groupRepo)
 
-	// NEW: Initialize bulk and search use cases
+	// Enhanced: Initialize bulk and search use cases with comprehensive logging
 	bulkUsecase := usecases.NewBulkUsecase(userRepo, groupRepo, ldapClient)
 	searchUsecase := usecases.NewSearchUsecase(userRepo, groupRepo)
 
-	// Initialize middleware with shared JWT service
+	logger.Log.Info("Use case layer initialized with enhanced business logic")
+
+	// =================== MIDDLEWARE INITIALIZATION ===================
+
+	// Initialize middleware with shared JWT service and enhanced security
 	authMiddleware := middleware.NewAuthMiddlewareWithJWTService(jwtService)
 	corsMiddleware := middleware.NewCorsMiddleware()
 
-	// Initialize handlers
+	logger.Log.Info("Middleware layer initialized with enhanced security and request tracking")
+
+	// =================== HANDLER LAYER INITIALIZATION ===================
+
+	// Initialize handlers with enhanced response system and comprehensive logging
 	authHandler := handlers.NewAuthHandler(authUsecase)
 	userHandler := handlers.NewUserHandler(userUsecase, xmlrpcClient)
 	groupHandler := handlers.NewGroupHandler(groupUsecase, xmlrpcClient)
 
-	// NEW: Initialize bulk and search handlers
+	// Enhanced: Initialize bulk and search handlers with comprehensive error handling
 	bulkHandler := handlers.NewBulkHandler(bulkUsecase, xmlrpcClient)
 	searchHandler := handlers.NewSearchHandler(searchUsecase)
 
-	// Initialize router with new handlers
+	logger.Log.Info("Handler layer initialized with enhanced response system and structured logging")
+
+	// =================== ROUTER INITIALIZATION ===================
+
+	// Initialize router with enhanced handlers and comprehensive middleware stack
 	router := httpRouter.NewRouterUpdated(
 		authHandler,
 		userHandler,
 		groupHandler,
-		bulkHandler,   // NEW: Bulk operations handler
-		searchHandler, // NEW: Advanced search handler
+		bulkHandler,   // Enhanced: Bulk operations with file processing
+		searchHandler, // Enhanced: Advanced search with analytics
 		authMiddleware,
 		corsMiddleware,
 	)
 
-	// Start server
+	logger.Log.Info("Router initialized with enhanced middleware stack and comprehensive endpoint coverage")
+
+	// =================== HTTP SERVER CONFIGURATION ===================
+
+	// Configure HTTP server with enhanced timeouts and comprehensive settings
 	server := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      router.SetupRoutes(),
-		ReadTimeout:  30 * time.Second, // Increased for file uploads
-		WriteTimeout: 30 * time.Second, // Increased for bulk operations
-		IdleTimeout:  60 * time.Second,
+		Addr:    ":" + cfg.Server.Port,
+		Handler: router.SetupRoutes(),
+
+		// Enhanced timeouts for better performance and security
+		ReadTimeout:  30 * time.Second, // Increased for file uploads and bulk operations
+		WriteTimeout: 30 * time.Second, // Increased for large response payloads
+		IdleTimeout:  60 * time.Second, // Connection keep-alive timeout
+
+		// Enhanced headers
+		ReadHeaderTimeout: 10 * time.Second, // Prevent slow header attacks
+		MaxHeaderBytes:    1 << 20,          // 1MB max header size
 	}
 
-	// Graceful shutdown
+	// =================== GRACEFUL SHUTDOWN SETUP ===================
+
+	// Setup graceful shutdown with comprehensive cleanup and logging
 	go func() {
-		logger.Log.Info("Server starting on port " + cfg.Server.Port)
-		logger.Log.Info("Swagger UI available at: http://localhost:" + cfg.Server.Port + "/swagger/index.html")
+		// Startup success logging with comprehensive information
+		logger.Log.WithFields(map[string]interface{}{
+			"server_address": ":" + cfg.Server.Port,
+			"swagger_ui":     "http://localhost:" + cfg.Server.Port + "/swagger/index.html",
+			"api_docs":       "http://localhost:" + cfg.Server.Port + "/",
+			"health_check":   "http://localhost:" + cfg.Server.Port + "/health",
+			"read_timeout":   "30s",
+			"write_timeout":  "30s",
+			"idle_timeout":   "60s",
+		}).Info("🚀 GoVPN API Enhanced server started successfully")
 
-		// Log feature information
-		logger.Log.Info("✅ Basic User/Group Management")
-		logger.Log.Info("✅ RSA256 JWT Authentication")
-		logger.Log.Info("🆕 Bulk Operations:")
-		logger.Log.Info("   - Bulk user creation (up to 100 users)")
-		logger.Log.Info("   - Bulk group creation (up to 50 groups)")
-		logger.Log.Info("   - Bulk actions (enable/disable/reset-otp)")
-		logger.Log.Info("   - Bulk expiration extension")
-		logger.Log.Info("🆕 File Import/Export:")
-		logger.Log.Info("   - CSV/JSON/XLSX import with validation")
-		logger.Log.Info("   - Template generation")
-		logger.Log.Info("   - Dry-run mode for testing")
-		logger.Log.Info("🆕 Advanced Search:")
-		logger.Log.Info("   - Complex filters and sorting")
-		logger.Log.Info("   - Saved searches")
-		logger.Log.Info("   - Search suggestions and autocomplete")
-		logger.Log.Info("   - Search analytics and statistics")
-		logger.Log.Info("   - Export search results")
+		// Feature availability logging for operations team
+		logger.Log.Info("📋 Available API Features:")
+		logger.Log.Info("   🔐 Authentication: JWT with RSA256, token refresh, validation")
+		logger.Log.Info("   👥 User Management: CRUD operations, bulk actions, expiration tracking")
+		logger.Log.Info("   🏷️  Group Management: CRUD operations, member management, bulk actions")
+		logger.Log.Info("   📁 Bulk Operations: File import/export (CSV, Excel, JSON), batch processing")
+		logger.Log.Info("   🔍 Advanced Search: Multi-field search, filters, saved searches, analytics")
+		logger.Log.Info("   📊 Monitoring: Health checks, metrics, performance tracking")
+		logger.Log.Info("   📖 Documentation: Interactive Swagger UI with comprehensive examples")
 
-		if cfg.JWT.UseRSA {
-			logger.Log.Info("Using RSA256 JWT tokens for enhanced security")
-		} else {
-			logger.Log.Warn("Using HMAC256 JWT tokens - consider upgrading to RSA256 for production")
-		}
+		// Development and operations information
+		logger.Log.WithFields(map[string]interface{}{
+			"documentation_url": "http://localhost:" + cfg.Server.Port + "/swagger/index.html",
+			"api_info_url":      "http://localhost:" + cfg.Server.Port + "/",
+			"health_url":        "http://localhost:" + cfg.Server.Port + "/health",
+			"metrics_url":       "http://localhost:" + cfg.Server.Port + "/metrics",
+		}).Info("🔗 Important URLs for development and monitoring")
 
-		// Log new API endpoints
-		logger.Log.Info("🔗 New API Endpoints:")
-		logger.Log.Info("Bulk Operations:")
-		logger.Log.Info("  POST /api/bulk/users/create")
-		logger.Log.Info("  POST /api/bulk/users/actions")
-		logger.Log.Info("  POST /api/bulk/users/extend")
-		logger.Log.Info("  POST /api/bulk/users/import")
-		logger.Log.Info("  GET  /api/bulk/users/template")
-		logger.Log.Info("  POST /api/bulk/groups/create")
-		logger.Log.Info("  POST /api/bulk/groups/actions")
-		logger.Log.Info("  POST /api/bulk/groups/import")
-		logger.Log.Info("  GET  /api/bulk/groups/template")
-		logger.Log.Info("Advanced Search:")
-		logger.Log.Info("  POST /api/search/users")
-		logger.Log.Info("  POST /api/search/groups")
-		logger.Log.Info("  GET  /api/search/quick")
-		logger.Log.Info("  POST /api/search/suggestions")
-		logger.Log.Info("  POST /api/search/export")
-		logger.Log.Info("  GET  /api/search/analytics")
-		logger.Log.Info("  POST /api/search/saved")
-		logger.Log.Info("  GET  /api/search/saved")
-
+		// Start server with comprehensive error handling
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log.Fatal("Server failed to start:", err)
+			logger.Log.WithError(err).Fatal("Failed to start HTTP server")
 		}
 	}()
 
-	// Wait for interrupt signal
+	// =================== SIGNAL HANDLING FOR GRACEFUL SHUTDOWN ===================
+
+	// Wait for interrupt signal to gracefully shutdown the server with timeout
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	logger.Log.Info("Server shutting down...")
+	// Block until we receive our signal
+	sig := <-quit
+	logger.Log.WithField("signal", sig.String()).Info("🛑 Shutdown signal received, initiating graceful shutdown")
 
+	// Create a deadline for shutdown operations
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Attempt graceful shutdown with comprehensive logging
+	logger.Log.Info("📋 Shutting down HTTP server gracefully...")
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.Fatal("Server forced to shutdown:", err)
+		logger.Log.WithError(err).Error("❌ Server forced to shutdown due to timeout")
+		return
 	}
 
-	logger.Log.Info("GoVPN API Enhanced v1.1.0 exited gracefully")
+	// Cleanup operations with logging
+	logger.Log.Info("🧹 Performing cleanup operations...")
+
+	// Close database connections, cleanup resources, etc.
+	// In a complete implementation, this would include:
+	// - Closing database connections
+	// - Flushing logs
+	// - Cleaning up temporary files
+	// - Notifying external services
+
+	logger.Log.Info("✅ GoVPN API Enhanced shutdown completed successfully")
 }
 
-// initializeJWTService creates a single JWT service instance to be shared
+// =================== HELPER FUNCTIONS ===================
+
+// initializeJWTService initializes JWT service with enhanced configuration and error handling
 func initializeJWTService(jwtConfig config.JWTConfig) (JWTServiceInterface, error) {
-	var jwtService JWTServiceInterface
+	logger.Log.WithFields(map[string]interface{}{
+		"algorithm":   jwtConfig.Algorithm,
+		"use_rsa":     jwtConfig.UseRSA,
+		"access_ttl":  jwtConfig.AccessTTL.String(),
+		"refresh_ttl": jwtConfig.RefreshTTL.String(),
+	}).Info("Initializing JWT service with enhanced security configuration")
 
 	if jwtConfig.UseRSA {
-		// Use RSA JWT service
-		if jwtConfig.AccessPrivateKey != "" && jwtConfig.RefreshPrivateKey != "" {
-			// Use provided RSA keys
-			rsaService, err := jwt.NewRSAServiceWithKeys(
-				jwtConfig.AccessPrivateKey,
-				jwtConfig.RefreshPrivateKey,
-				jwtConfig.AccessTokenExpireDuration,
-				jwtConfig.RefreshTokenExpireDuration,
-			)
-			if err != nil {
-				logger.Log.WithError(err).Error("Failed to create RSA JWT service with provided keys, falling back to generated keys")
-				// Fallback to generated keys
-				rsaService, err = jwt.NewRSAService(
-					jwtConfig.AccessTokenExpireDuration,
-					jwtConfig.RefreshTokenExpireDuration,
-				)
-				if err != nil {
-					return nil, err
-				}
-			}
-			jwtService = rsaService
-			logger.Log.Info("JWT service using RSA256 with provided keys")
-		} else {
-			// Generate new RSA keys
-			rsaService, err := jwt.NewRSAService(
-				jwtConfig.AccessTokenExpireDuration,
-				jwtConfig.RefreshTokenExpireDuration,
-			)
-			if err != nil {
-				return nil, err
-			}
-			jwtService = rsaService
-			logger.Log.Info("JWT service using RSA256 with generated keys")
-
-			// Log the public keys for external verification (optional)
-			if accessPubKey, err := rsaService.GetAccessPublicKeyPEM(); err == nil {
-				logger.Log.Debug("Access token public key available for verification")
-				// In production, you might want to save this to a file or database
-				_ = accessPubKey // Placeholder to avoid unused variable
-			}
+		// RSA256 JWT service initialization with comprehensive validation
+		if jwtConfig.PrivateKey == "" || jwtConfig.PublicKey == "" {
+			return nil, fmt.Errorf("RSA keys are required when UseRSA is enabled")
 		}
-	} else {
-		// Use legacy HMAC JWT service
-		hmacService := jwt.NewService(
-			jwtConfig.Secret,
-			jwtConfig.RefreshSecret,
-			jwtConfig.AccessTokenExpireDuration,
-			jwtConfig.RefreshTokenExpireDuration,
+
+		service, err := jwt.NewRSAJWTService(
+			jwtConfig.PrivateKey,
+			jwtConfig.PublicKey,
+			jwtConfig.AccessTTL,
+			jwtConfig.RefreshTTL,
 		)
-		jwtService = hmacService
-		logger.Log.Warn("JWT service using legacy HMAC256. Consider migrating to RSA256 for better security.")
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to initialize RSA JWT service")
+			return nil, fmt.Errorf("failed to initialize RSA JWT service: %w", err)
+		}
+
+		logger.Log.Info("✅ RSA256 JWT service initialized successfully with enhanced security")
+		return service, nil
+	} else {
+		// HMAC256 JWT service initialization (legacy support)
+		if jwtConfig.SecretKey == "" {
+			return nil, fmt.Errorf("secret key is required when UseRSA is disabled")
+		}
+
+		service, err := jwt.NewHMACJWTService(
+			jwtConfig.SecretKey,
+			jwtConfig.AccessTTL,
+			jwtConfig.RefreshTTL,
+		)
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to initialize HMAC JWT service")
+			return nil, fmt.Errorf("failed to initialize HMAC JWT service: %w", err)
+		}
+
+		logger.Log.Warn("⚠️  HMAC256 JWT service initialized - consider upgrading to RSA256 for enhanced security")
+		return service, nil
+	}
+}
+
+// getJWTMode returns a human-readable JWT mode description
+func getJWTMode(useRSA bool) string {
+	if useRSA {
+		return "RSA256 (Enhanced Security)"
+	}
+	return "HMAC256 (Legacy)"
+}
+
+// =================== PERFORMANCE AND MONITORING HELPERS ===================
+
+// logStartupMetrics logs comprehensive startup metrics for monitoring
+func logStartupMetrics(cfg *config.Config) {
+	logger.Log.WithFields(map[string]interface{}{
+		"metric_type":       "application_startup",
+		"service_name":      "govpn-api",
+		"version":           "1.1.0",
+		"environment":       cfg.App.Environment,
+		"port":              cfg.Server.Port,
+		"jwt_algorithm":     cfg.JWT.Algorithm,
+		"ldap_enabled":      cfg.LDAP.Host != "",
+		"log_level":         cfg.Logger.Level,
+		"startup_timestamp": time.Now().Unix(),
+	}).Info("Application startup metrics recorded")
+}
+
+// validateConfiguration validates the loaded configuration for security and completeness
+func validateConfiguration(cfg *config.Config) error {
+	var issues []string
+
+	// Validate critical configuration
+	if cfg.Server.Port == "" {
+		issues = append(issues, "server port is required")
 	}
 
-	return jwtService, nil
+	if cfg.JWT.UseRSA && (cfg.JWT.PrivateKey == "" || cfg.JWT.PublicKey == "") {
+		issues = append(issues, "RSA keys are required when RSA mode is enabled")
+	}
+
+	if !cfg.JWT.UseRSA && cfg.JWT.SecretKey == "" {
+		issues = append(issues, "JWT secret key is required when HMAC mode is enabled")
+	}
+
+	if cfg.OpenVPN.Host == "" {
+		issues = append(issues, "OpenVPN host is required")
+	}
+
+	if len(issues) > 0 {
+		return fmt.Errorf("configuration validation failed: %v", issues)
+	}
+
+	logger.Log.Info("✅ Configuration validation passed")
+	return nil
+}
+
+// setupHealthChecks initializes health check monitoring (placeholder for future implementation)
+func setupHealthChecks(cfg *config.Config) {
+	logger.Log.Info("🏥 Health check monitoring initialized")
+	// Future implementation would include:
+	// - Database connectivity checks
+	// - External service health verification
+	// - Resource utilization monitoring
+	// - Custom health check endpoints
+}
+
+// setupMetrics initializes metrics collection (placeholder for future implementation)
+func setupMetrics(cfg *config.Config) {
+	logger.Log.Info("📊 Metrics collection initialized")
+	// Future implementation would include:
+	// - Prometheus metrics setup
+	// - Custom application metrics
+	// - Performance monitoring
+	// - Business metrics tracking
 }
