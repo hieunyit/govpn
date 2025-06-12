@@ -454,6 +454,9 @@ definitions:
       email:
         example: testuser@example.com
         type: string
+      groupName:
+        example: TEST_GR
+        type: string
       macAddresses:
         example:
         - 5E:CD:C9:D4:88:65
@@ -861,6 +864,9 @@ definitions:
       denyAccess:
         example: false
         type: boolean
+      groupName:
+        example: TEST_GR
+        type: string
       macAddresses:
         example:
         - 5E:CD:C9:D4:88:65
@@ -1280,13 +1286,16 @@ paths:
       - Bulk Operations
   /api/groups:
     get:
-      description: Get list of groups with optional filtering
+      description: Get a paginated list of groups with filtering
       parameters:
       - description: Filter by group name
         in: query
         name: groupName
         type: string
       - description: Filter by auth method
+        enum:
+        - ldap
+        - local
         in: query
         name: authMethod
         type: string
@@ -1311,6 +1320,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.GroupListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List groups
@@ -1434,14 +1447,14 @@ paths:
     put:
       consumes:
       - application/json
-      description: Enable or disable a group
+      description: Perform actions like enable, disable
       parameters:
       - description: Group name
         in: path
         name: groupName
         required: true
         type: string
-      - description: Action (enable/disable)
+      - description: Action
         enum:
         - enable
         - disable
@@ -1458,10 +1471,6 @@ paths:
             $ref: '#/definitions/dto.MessageResponse'
         "400":
           description: Bad Request
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-        "404":
-          description: Not Found
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -1764,7 +1773,7 @@ paths:
       - Advanced Search
   /api/users:
     get:
-      description: Get list of users with optional filtering
+      description: Get a paginated list of users with filtering
       parameters:
       - description: Filter by username
         in: query
@@ -1774,11 +1783,17 @@ paths:
         in: query
         name: email
         type: string
-      - description: Filter by auth method (local/ldap)
+      - description: Filter by auth method
+        enum:
+        - ldap
+        - local
         in: query
         name: authMethod
         type: string
-      - description: Filter by role (Admin/User)
+      - description: Filter by role
+        enum:
+        - Admin
+        - User
         in: query
         name: role
         type: string
@@ -1803,6 +1818,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.UserListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List users
@@ -1926,14 +1945,14 @@ paths:
     put:
       consumes:
       - application/json
-      description: Enable, disable, reset OTP, or change password for a user
+      description: Perform actions like enable, disable, reset-otp, change-password
       parameters:
       - description: Username
         in: path
         name: username
         required: true
         type: string
-      - description: Action (enable/disable/reset-otp/change-password)
+      - description: Action
         enum:
         - enable
         - disable
@@ -1943,7 +1962,7 @@ paths:
         name: action
         required: true
         type: string
-      - description: Password change data (only for change-password action)
+      - description: Required only for change-password action
         in: body
         name: request
         schema:
@@ -1959,10 +1978,6 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Perform user action
@@ -1970,10 +1985,10 @@ paths:
       - Users
   /api/users/expirations:
     get:
-      description: Get list of users expiring in specified days
+      description: Get users that will expire in the specified number of days
       parameters:
-      - default: 0
-        description: Days ahead to check for expiration
+      - default: 7
+        description: Number of days
         in: query
         name: days
         type: integer
@@ -1984,6 +1999,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.UserExpirationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get expiring users

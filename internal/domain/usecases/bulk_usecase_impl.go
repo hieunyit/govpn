@@ -219,8 +219,59 @@ func (u *bulkUsecaseImpl) createUserWorker(ctx context.Context, userChan <-chan 
 			continue
 		}
 
+		// Check if user already exists
+		existsEmail, err := u.userRepo.ExistsByEmail(ctx, userReq.Email)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to check email existence: %v", err)
+			resultChan <- result
+			continue
+		}
+
+		if existsEmail {
+			result.Success = false
+			result.Error = "Email already exists"
+			resultChan <- result
+			continue
+		}
+		if userReq.GroupName != "" {
+			existsGroup, err := u.groupRepo.ExistsByName(ctx, userReq.GroupName)
+			if err != nil {
+				result.Success = false
+				result.Error = fmt.Sprintf("Failed to check group existence: %v", err)
+				resultChan <- result
+				continue
+			}
+
+			if !existsGroup {
+				result.Success = false
+				result.Error = "Group not found"
+				resultChan <- result
+				continue
+			}
+		} else {
+			userReq.GroupName = "__DEFAULT__" // Assign default group if not provided
+		}
+		// Convert DTO to entity
+		user := &entities.User{
+			Username:       userReq.Username,
+			Email:          userReq.Email,
+			Password:       userReq.Password,
+			AuthMethod:     userReq.AuthMethod,
+			GroupName:      userReq.GroupName,
+			UserExpiration: userReq.UserExpiration,
+			MacAddresses:   validator.ConvertMAC(userReq.MacAddresses),
+			AccessControl:  userReq.AccessControl,
+		}
+		if err := u.validateUserAuthMethod(user); err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Auth method validation failed: %v", err)
+			resultChan <- result
+			continue
+		}
+
 		// For LDAP users, verify they exist in LDAP
-		if userReq.AuthMethod == "ldap" {
+		if user.IsLDAPAuth() {
 			if err := u.ldapClient.CheckUserExists(userReq.Username); err != nil {
 				result.Success = false
 				result.Error = fmt.Sprintf("LDAP user check failed: %v", err)
@@ -229,23 +280,13 @@ func (u *bulkUsecaseImpl) createUserWorker(ctx context.Context, userChan <-chan 
 			}
 		}
 
-		// Convert DTO to entity
-		user := &entities.User{
-			Username:       userReq.Username,
-			Email:          userReq.Email,
-			Password:       userReq.Password,
-			AuthMethod:     userReq.AuthMethod,
-			UserExpiration: userReq.UserExpiration,
-			MacAddresses:   validator.ConvertMAC(userReq.MacAddresses),
-			AccessControl:  userReq.AccessControl,
+		if len(user.MacAddresses) > 0 {
+			macAddresses := validator.ConvertMAC(user.MacAddresses)
+			user.MacAddresses = macAddresses
 		}
 
 		// Process user group if access control is provided
 		if len(user.AccessControl) > 0 {
-			groupName := strings.ToUpper(user.Username) + "_GR"
-
-			// Create group
-			group := entities.NewGroup(groupName, user.AuthMethod)
 			accessControl, err := validator.ValidateAndFixIPs(user.AccessControl)
 			if err != nil {
 				result.Success = false
@@ -253,26 +294,11 @@ func (u *bulkUsecaseImpl) createUserWorker(ctx context.Context, userChan <-chan 
 				resultChan <- result
 				continue
 			}
-			group.AccessControl = accessControl
-
-			if err := u.groupRepo.Create(ctx, group); err != nil {
-				result.Success = false
-				result.Error = fmt.Sprintf("Failed to create user group: %v", err)
-				resultChan <- result
-				continue
-			}
-
-			user.GroupName = groupName
-		} else {
-			user.GroupName = "__DEFAULT__"
+			user.AccessControl = accessControl
 		}
 
 		// Create user
 		if err := u.userRepo.Create(ctx, user); err != nil {
-			// Cleanup group if user creation fails
-			if user.GroupName != "__DEFAULT__" {
-				u.groupRepo.Delete(ctx, user.GroupName)
-			}
 			result.Success = false
 			result.Error = fmt.Sprintf("Failed to create user: %v", err)
 			resultChan <- result
@@ -1351,4 +1377,44 @@ func (u *bulkUsecaseImpl) calculateSuccessRate(success, total int) float64 {
 		return 0
 	}
 	return float64(success) / float64(total) * 100
+}
+func (u *bulkUsecaseImpl) validateUserAuthMethod(user *entities.User) error {
+	authMethod := strings.ToLower(strings.TrimSpace(user.AuthMethod))
+
+	switch authMethod {
+	case "local":
+		// Local users must have password during creation
+		if strings.TrimSpace(user.Password) == "" {
+			return fmt.Errorf("password is required for local users")
+		}
+
+		// Validate password complexity
+		if err := u.validatePasswordComplexity(user.Password); err != nil {
+			return fmt.Errorf("password validation failed: %w", err)
+		}
+
+	case "ldap":
+		// LDAP users should not have password set during creation
+		if strings.TrimSpace(user.Password) != "" {
+			logger.Log.WithField("username", user.Username).
+				Warn("Password provided for LDAP user during creation - clearing password")
+			user.Password = "" // Clear password for LDAP users
+		}
+
+	default:
+		return fmt.Errorf("invalid authentication method: %s", user.AuthMethod)
+	}
+
+	return nil
+}
+func (u *bulkUsecaseImpl) validatePasswordComplexity(password string) error {
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters long")
+	}
+
+	if len(password) > 128 {
+		return fmt.Errorf("password must not exceed 128 characters")
+	}
+
+	return nil
 }

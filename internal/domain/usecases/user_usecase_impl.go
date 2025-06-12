@@ -33,11 +33,28 @@ func (u *userUsecaseImpl) CreateUser(ctx context.Context, user *entities.User) e
 		Info("Creating user")
 
 	// Check if user already exists
-	existingUser, err := u.userRepo.GetByUsername(ctx, user.Username)
-	if err == nil && existingUser != nil {
+	existingUser, err := u.userRepo.ExistsByUsername(ctx, user.Username)
+	if existingUser && err == nil {
 		return errors.Conflict("User already exists", nil)
 	}
-
+	if user.GroupName != "" {
+		existingGroup, err := u.groupRepo.ExistsByName(ctx, user.GroupName)
+		if err != nil {
+			return errors.InternalServerError("Failed to get group", err)
+		}
+		if !existingGroup {
+			return errors.BadRequest("Group does not exist", nil)
+		}
+	} else {
+		user.GroupName = "__DEFAULT__"
+	}
+	existingEmail, err := u.userRepo.ExistsByEmail(ctx, user.Email)
+	if err != nil {
+		return errors.InternalServerError("Failed to get email", err)
+	}
+	if existingEmail {
+		return errors.BadRequest("Email already exists", nil)
+	}
 	// CRITICAL FIX: Enhanced auth method validation
 	if err := u.validateUserAuthMethod(user); err != nil {
 		return errors.BadRequest("Auth method validation failed", err)
@@ -127,6 +144,23 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 	if err != nil {
 		return err
 	}
+	if user.GroupName != "" && user.GroupName != "__DEFAULT__" {
+		existingGroup, err := u.groupRepo.ExistsByName(ctx, user.GroupName)
+		if err != nil {
+			return errors.InternalServerError("Failed to get group", err)
+		}
+
+		if !existingGroup {
+			return errors.BadRequest("Group does not exist", nil)
+		}
+	}
+	if err := u.userRepo.UserPropDel(ctx, existingUser); err != nil {
+		logger.Log.WithField("username", user.Username).WithError(err).Error("Failed to UserPropDel")
+		if err := u.userRepo.Update(ctx, existingUser); err != nil {
+			return errors.InternalServerError("Failed to restore user", err)
+		}
+		return errors.InternalServerError("Failed to UserPropDel", err)
+	}
 
 	// CRITICAL FIX: For LDAP users, verify they still exist in LDAP
 	if existingUser.IsLDAPAuth() {
@@ -141,9 +175,6 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 	updateUser := &entities.User{
 		Username: user.Username, // Required for identification
 	}
-
-	// IMPORTANT: Password is NOT handled here - it's handled separately by ChangePassword
-	// This avoids duplicate password processing
 
 	// Partial update: Only update fields that are provided
 	if user.UserExpiration != "" {
@@ -162,7 +193,6 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 	}
 
 	if len(user.AccessControl) > 0 {
-		// Validate and fix IP addresses
 		accessControl, err := validator.ValidateAndFixIPs(user.AccessControl)
 		if err != nil {
 			return errors.BadRequest("Invalid IP addresses", err)
@@ -173,7 +203,6 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 			Debug("Updating access control")
 	}
 
-	// Handle DenyAccess if provided
 	if user.DenyAccess != "" {
 		updateUser.DenyAccess = user.DenyAccess
 		logger.Log.WithField("username", user.Username).

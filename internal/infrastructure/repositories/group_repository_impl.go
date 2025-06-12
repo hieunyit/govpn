@@ -48,6 +48,19 @@ func (r *groupRepositoryImpl) GetByName(ctx context.Context, groupName string) (
 	return group, nil
 }
 
+func (r *groupRepositoryImpl) GroupPropDel(ctx context.Context, group *entities.Group) error {
+	logger.Log.WithField("grouname", group.GroupName).Info("GrouopPropDel user")
+
+	err := r.groupClient.GroupPropDel(group)
+	if err != nil {
+		logger.Log.WithField("grouname", group.GroupName).WithError(err).Error("Failed to UserPropDel user")
+		return fmt.Errorf("failed to UserPropDel user: %w", err)
+	}
+
+	logger.Log.WithField("grouname", group.GroupName).Info("User updated successfully")
+	return nil
+}
+
 func (r *groupRepositoryImpl) Update(ctx context.Context, group *entities.Group) error {
 	logger.Log.WithField("groupName", group.GroupName).Info("Updating group")
 

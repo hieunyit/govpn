@@ -129,6 +129,7 @@ type UserCSVRecord struct {
 	Email          string `csv:"email" example:"test@example.com"`
 	Password       string `csv:"password,omitempty" example:"SecurePass123!"`
 	AuthMethod     string `csv:"auth_method" example:"local"`
+	GroupName      string `csv:"group_name,omitempty" example:"TEST_GROUP"`
 	UserExpiration string `csv:"user_expiration" example:"31/12/2024"`
 	MacAddresses   string `csv:"mac_addresses" example:"AA:BB:CC:DD:EE:FF,11:22:33:44:55:66"`
 	AccessControl  string `csv:"access_control,omitempty" example:"192.168.1.0/24,10.0.0.0/8"`

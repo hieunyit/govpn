@@ -10,6 +10,7 @@ type GroupRepository interface {
 	Create(ctx context.Context, group *entities.Group) error
 	GetByName(ctx context.Context, groupName string) (*entities.Group, error)
 	Update(ctx context.Context, group *entities.Group) error
+	GroupPropDel(ctx context.Context, group *entities.Group) error
 	Delete(ctx context.Context, groupName string) error
 	List(ctx context.Context, filter *entities.GroupFilter) ([]*entities.Group, error)
 

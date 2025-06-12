@@ -71,6 +71,19 @@ func (r *userRepositoryImpl) Update(ctx context.Context, user *entities.User) er
 	return nil
 }
 
+func (r *userRepositoryImpl) UserPropDel(ctx context.Context, user *entities.User) error {
+	logger.Log.WithField("username", user.Username).Info("UserPropDel user")
+
+	err := r.userClient.UserPropDel(user)
+	if err != nil {
+		logger.Log.WithField("username", user.Username).WithError(err).Error("Failed to UserPropDel user")
+		return fmt.Errorf("failed to UserPropDel user: %w", err)
+	}
+
+	logger.Log.WithField("username", user.Username).Info("User updated successfully")
+	return nil
+}
+
 func (r *userRepositoryImpl) Delete(ctx context.Context, username string) error {
 	logger.Log.WithField("username", username).Info("Deleting user")
 
@@ -151,9 +164,14 @@ func (r *userRepositoryImpl) ExistsByUsername(ctx context.Context, username stri
 }
 
 func (r *userRepositoryImpl) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	// Note: This would require implementing email search in XML-RPC client
-	// For now, return false as OpenVPN AS doesn't have efficient email lookup
-	return false, nil
+	logger.Log.WithField("email", email).Debug("Checking if user exists")
+
+	_, err := r.userClient.ExistsByEmail(email)
+	if err != nil {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (r *userRepositoryImpl) Enable(ctx context.Context, username string) error {

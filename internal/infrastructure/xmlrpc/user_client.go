@@ -64,6 +64,31 @@ func (c *UserClient) GetUser(username string) (*entities.User, error) {
 
 	return c.parseUserResponse(username, body)
 }
+func (c *UserClient) ExistsByEmail(email string) (bool, error) {
+	xmlRequest := c.makeGetAllUsersRequest()
+
+	resp, err := c.Call(xmlRequest)
+	if err != nil {
+		return false, fmt.Errorf("failed to get user: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response: %w", err)
+	}
+	if !c.isSuccessResponse(string(body)) {
+		return false, fmt.Errorf("get email failed: %s", string(body))
+	}
+	if strings.Contains(string(body), email) {
+		return true, nil
+	}
+	return false, fmt.Errorf("email not found: %s", email)
+}
 
 func (c *UserClient) GetAllUsers() ([]*entities.User, error) {
 	xmlRequest := c.makeGetAllUsersRequest()
@@ -131,6 +156,31 @@ func (c *UserClient) DeleteUser(username string) error {
 
 	if !c.isSuccessResponse(string(body)) {
 		return fmt.Errorf("delete user failed: %s", string(body))
+	}
+
+	return nil
+}
+
+func (c *UserClient) UserPropDel(user *entities.User) error {
+	xmlRequest := c.makeUserPropDelRequest(user)
+
+	resp, err := c.Call(xmlRequest)
+	if err != nil {
+		return fmt.Errorf("failed to UserPropDel: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if !c.isSuccessResponse(string(body)) {
+		return fmt.Errorf("UserPropDel failed: %s", string(body))
 	}
 
 	return nil
@@ -270,7 +320,11 @@ func (c *UserClient) makeCreateUserRequest(user *entities.User) string {
 		macField := fmt.Sprintf("pvt_hw_addr%s", map[int]string{0: "", 1: "2", 2: "3", 3: "4", 4: "5"}[i])
 		buf.WriteString(`<member><name>` + macField + `</name><value><string>` + c.xmlEscape(mac) + `</string></value></member>`)
 	}
-
+	for i, accessControl := range user.AccessControl {
+		accessName := fmt.Sprintf("access_to.%d", i)
+		accessValue := "+NAT:" + accessControl
+		buf.WriteString(`<member><name>` + c.xmlEscape(accessName) + `</name><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
+	}
 	buf.WriteString(`<member><name>type</name><value><string>user_connect</string></value></member>`)
 	buf.WriteString(`<member><name>prop_google_auth</name><value><string>true</string></value></member>`)
 	buf.WriteString(`</struct></value></param>`)
@@ -318,6 +372,9 @@ func (c *UserClient) makeUpdateUserRequest(user *entities.User) string {
 	if user.DenyAccess != "" {
 		buf.WriteString(`<member><name>prop_deny</name><value><string>` + c.xmlEscape(user.DenyAccess) + `</string></value></member>`)
 	}
+	if user.GroupName != "" {
+		buf.WriteString(`<member><name>conn_group</name><value><string>` + c.xmlEscape(user.GroupName) + `</string></value></member>`)
+	}
 
 	// MAC addresses
 	for i, mac := range user.MacAddresses {
@@ -327,7 +384,11 @@ func (c *UserClient) makeUpdateUserRequest(user *entities.User) string {
 		macField := fmt.Sprintf("pvt_hw_addr%s", map[int]string{0: "", 1: "2", 2: "3", 3: "4", 4: "5"}[i])
 		buf.WriteString(`<member><name>` + macField + `</name><value><string>` + c.xmlEscape(mac) + `</string></value></member>`)
 	}
-
+	for i, accessControl := range user.AccessControl {
+		accessName := fmt.Sprintf("access_to.%d", i)
+		accessValue := "+NAT:" + accessControl
+		buf.WriteString(`<member><name>` + c.xmlEscape(accessName) + `</name><value><string>` + c.xmlEscape(accessValue) + `</string></value></member>`)
+	}
 	buf.WriteString(`</struct></value></param>`)
 	buf.WriteString(`<param><value><boolean>0</boolean></value></param>`)
 	buf.WriteString(`</params></methodCall>`)
@@ -346,6 +407,31 @@ func (c *UserClient) makeDeleteUserRequest(username string) string {
 	</param>
 </params>
 </methodCall>`, c.xmlEscape(username))
+}
+
+func (c *UserClient) makeUserPropDelRequest(user *entities.User) string {
+	var buf bytes.Buffer
+
+	buf.WriteString(`<?xml version="1.0"?><methodCall>`)
+	buf.WriteString(`<methodName>UserPropDel</methodName><params>`)
+	buf.WriteString(`<param><value><string>` + c.xmlEscape(user.Username) + `</string></value></param>`)
+	buf.WriteString(`<param><value><array><data>`)
+	// MAC addresses
+	for i, _ := range user.MacAddresses {
+		if i >= 5 {
+			break
+		}
+		macField := fmt.Sprintf("pvt_hw_addr%s", map[int]string{0: "", 1: "2", 2: "3", 3: "4", 4: "5"}[i])
+		buf.WriteString(`<value><string>` + c.xmlEscape(macField) + `</string></value>`)
+	}
+	for i, _ := range user.AccessControl {
+		accessName := fmt.Sprintf("access_to.%d", i)
+		buf.WriteString(`<value><string>` + c.xmlEscape(accessName) + `</string></value>`)
+	}
+	buf.WriteString(`</data></array></value></param>`)
+	buf.WriteString(`</params></methodCall>`)
+
+	return buf.String()
 }
 
 func (c *UserClient) makeSetPasswordRequest(username, password string) string {

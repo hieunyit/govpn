@@ -64,11 +64,17 @@ func (u *groupUsecaseImpl) UpdateGroup(ctx context.Context, group *entities.Grou
 	logger.Log.WithField("groupName", group.GroupName).Info("Updating group")
 
 	// Check if group exists
-	_, err := u.groupRepo.GetByName(ctx, group.GroupName)
+	existingGroup, err := u.groupRepo.GetByName(ctx, group.GroupName)
 	if err != nil {
 		return err
 	}
-
+	if err := u.groupRepo.GroupPropDel(ctx, existingGroup); err != nil {
+		logger.Log.WithField("username", group.GroupName).WithError(err).Error("Failed to GroupPropDel")
+		if err := u.groupRepo.Update(ctx, existingGroup); err != nil {
+			return errors.InternalServerError("Failed to restore group", err)
+		}
+		return errors.InternalServerError("Failed to GroupPropDel", err)
+	}
 	// Validate and fix IP addresses if access control is provided
 	if len(group.AccessControl) > 0 {
 		accessControl, err := validator.ValidateAndFixIPs(group.AccessControl)

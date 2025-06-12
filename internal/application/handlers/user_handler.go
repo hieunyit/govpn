@@ -70,6 +70,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		AuthMethod:     req.AuthMethod,
 		UserExpiration: req.UserExpiration,
 		MacAddresses:   req.MacAddresses,
+		GroupName:      req.GroupName,
 		AccessControl:  req.AccessControl,
 	}
 

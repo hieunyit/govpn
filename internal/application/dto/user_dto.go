@@ -7,6 +7,7 @@ type CreateUserRequest struct {
 	Email          string   `json:"email" validate:"required,email" example:"testuser@example.com"`
 	Password       string   `json:"password,omitempty" validate:"password_if_local" example:"SecurePass123!"`
 	AuthMethod     string   `json:"authMethod" validate:"required,oneof=ldap local" example:"local"`
+	GroupName      string   `json:"groupName,omitempty" example:"TEST_GR"`
 	UserExpiration string   `json:"userExpiration" validate:"required,date" example:"31/12/2024"`
 	MacAddresses   []string `json:"macAddresses" validate:"required,dive,mac_address" example:"5E:CD:C9:D4:88:65"`
 	AccessControl  []string `json:"accessControl,omitempty" validate:"omitempty,dive,ipv4|cidrv4|ipv4_protocol" example:"192.168.1.0/24"`
@@ -18,6 +19,7 @@ type UpdateUserRequest struct {
 	DenyAccess     *bool    `json:"denyAccess,omitempty" example:"false"`
 	MacAddresses   []string `json:"macAddresses,omitempty" validate:"omitempty,dive,mac_address" example:"5E:CD:C9:D4:88:65"`
 	AccessControl  []string `json:"accessControl,omitempty" validate:"omitempty,dive,ipv4|cidrv4|ipv4_protocol" example:"192.168.1.0/24"`
+	GroupName      string   `json:"groupName,omitempty" example:"TEST_GR"`
 }
 
 type UserResponse struct {
@@ -137,6 +139,7 @@ func GetCreateUserExamples() CreateUserExamples {
 			Email:          "localuser@example.com",
 			Password:       "SecurePass123!",
 			AuthMethod:     "local",
+			GroupName:      "TEST_GR",
 			UserExpiration: "31/12/2024",
 			MacAddresses:   []string{"5E:CD:C9:D4:88:65", "AA-BB-CC-DD-EE-FF"},
 			AccessControl:  []string{"192.168.1.0/24", "10.0.0.0/8"},
@@ -146,6 +149,7 @@ func GetCreateUserExamples() CreateUserExamples {
 			Email:          "ldapuser@company.com",
 			Password:       "", // Not required for LDAP
 			AuthMethod:     "ldap",
+			GroupName:      "TEST_GR",
 			UserExpiration: "31/12/2024",
 			MacAddresses:   []string{"5E:CD:C9:D4:88:66"},
 			AccessControl:  []string{"192.168.2.0/24"},

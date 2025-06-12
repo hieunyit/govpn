@@ -476,7 +476,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get list of groups with optional filtering",
+                "description": "Get a paginated list of groups with filtering",
                 "produces": [
                     "application/json"
                 ],
@@ -492,6 +492,10 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "ldap",
+                            "local"
+                        ],
                         "type": "string",
                         "description": "Filter by auth method",
                         "name": "authMethod",
@@ -523,6 +527,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.GroupListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -715,7 +725,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Enable or disable a group",
+                "description": "Perform actions like enable, disable",
                 "consumes": [
                     "application/json"
                 ],
@@ -740,7 +750,7 @@ const docTemplate = `{
                             "disable"
                         ],
                         "type": "string",
-                        "description": "Action (enable/disable)",
+                        "description": "Action",
                         "name": "action",
                         "in": "path",
                         "required": true
@@ -755,12 +765,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -1235,7 +1239,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get list of users with optional filtering",
+                "description": "Get a paginated list of users with filtering",
                 "produces": [
                     "application/json"
                 ],
@@ -1257,14 +1261,22 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "ldap",
+                            "local"
+                        ],
                         "type": "string",
-                        "description": "Filter by auth method (local/ldap)",
+                        "description": "Filter by auth method",
                         "name": "authMethod",
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "Admin",
+                            "User"
+                        ],
                         "type": "string",
-                        "description": "Filter by role (Admin/User)",
+                        "description": "Filter by role",
                         "name": "role",
                         "in": "query"
                     },
@@ -1294,6 +1306,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.UserListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -1355,7 +1373,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get list of users expiring in specified days",
+                "description": "Get users that will expire in the specified number of days",
                 "produces": [
                     "application/json"
                 ],
@@ -1366,8 +1384,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "default": 0,
-                        "description": "Days ahead to check for expiration",
+                        "default": 7,
+                        "description": "Number of days",
                         "name": "days",
                         "in": "query"
                     }
@@ -1377,6 +1395,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.UserExpirationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -1520,7 +1544,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Enable, disable, reset OTP, or change password for a user",
+                "description": "Perform actions like enable, disable, reset-otp, change-password",
                 "consumes": [
                     "application/json"
                 ],
@@ -1547,13 +1571,13 @@ const docTemplate = `{
                             "change-password"
                         ],
                         "type": "string",
-                        "description": "Action (enable/disable/reset-otp/change-password)",
+                        "description": "Action",
                         "name": "action",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Password change data (only for change-password action)",
+                        "description": "Required only for change-password action",
                         "name": "request",
                         "in": "body",
                         "schema": {
@@ -1570,12 +1594,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2334,6 +2352,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "testuser@example.com"
                 },
+                "groupName": {
+                    "type": "string",
+                    "example": "TEST_GR"
+                },
                 "macAddresses": {
                     "type": "array",
                     "items": {
@@ -2903,6 +2925,10 @@ const docTemplate = `{
                 "denyAccess": {
                     "type": "boolean",
                     "example": false
+                },
+                "groupName": {
+                    "type": "string",
+                    "example": "TEST_GR"
                 },
                 "macAddresses": {
                     "type": "array",

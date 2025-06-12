@@ -270,6 +270,31 @@ func (c *GroupClient) makeGetAllGroupsRequest() string {
 </methodCall>`
 }
 
+func (c *GroupClient) GroupPropDel(group *entities.Group) error {
+	xmlRequest := c.makeGroupPropDelRequest(group)
+
+	resp, err := c.Call(xmlRequest)
+	if err != nil {
+		return fmt.Errorf("failed to UserPropDel: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if !c.isSuccessResponse(string(body)) {
+		return fmt.Errorf("UserPropDel failed: %s", string(body))
+	}
+
+	return nil
+}
+
 func (c *GroupClient) makeUpdateGroupRequest(group *entities.Group) string {
 	var buf bytes.Buffer
 
@@ -310,6 +335,23 @@ func (c *GroupClient) makeDeleteGroupRequest(groupName string) string {
 	</param>
 </params>
 </methodCall>`, c.xmlEscape(groupName))
+}
+
+func (c *GroupClient) makeGroupPropDelRequest(group *entities.Group) string {
+	var buf bytes.Buffer
+
+	buf.WriteString(`<?xml version="1.0"?><methodCall>`)
+	buf.WriteString(`<methodName>UserPropDel</methodName><params>`)
+	buf.WriteString(`<param><value><string>` + c.xmlEscape(group.GroupName) + `</string></value></param>`)
+	buf.WriteString(`<param><value><array><data>`)
+	for i, _ := range group.AccessControl {
+		accessName := fmt.Sprintf("access_to.%d", i)
+		buf.WriteString(`<value><string>` + c.xmlEscape(accessName) + `</string></value>`)
+	}
+	buf.WriteString(`</data></array></value></param>`)
+	buf.WriteString(`</params></methodCall>`)
+
+	return buf.String()
 }
 
 func (c *GroupClient) makeGroupPropertyRequest(groupName, property, value string) string {
