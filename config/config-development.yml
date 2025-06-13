@@ -43,16 +43,33 @@ security:
   # Enable additional security headers
   enableSecurityHeaders: true
   
-  # CORS Configuration
+  # CORS Configuration - CẬP NHẬT QUAN TRỌNG
   cors:
-    allowedOrigins: ["http://localhost:3000", "http://localhost:8080"]
-    allowedMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowedOrigins: 
+      - "*"  # Cho phép tất cả origins trong development
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+      - "http://127.0.0.1:3000"
+      - "http://127.0.0.1:8080"
+      - "https://localhost:3000"
+      - "https://localhost:8080"
+    allowedMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+    allowedHeaders: 
+      - "Origin"
+      - "Content-Type"
+      - "Accept"
+      - "Authorization"
+      - "X-Requested-With"
+      - "X-Request-ID"
+      - "Access-Control-Allow-Origin"
+      - "Access-Control-Allow-Headers"
+      - "Access-Control-Allow-Methods"
     allowCredentials: true
     
   # Rate Limiting (requests per minute)
   rateLimit:
-    enabled: true
-    requestsPerMinute: 100
+    enabled: false  # Tắt trong development để tránh conflict
+    requestsPerMinute: 1000  # Tăng limit
     
 # Validation Settings
 validation:

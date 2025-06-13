@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +15,17 @@ type CorsMiddleware struct {
 
 func NewCorsMiddleware() *CorsMiddleware {
 	return &CorsMiddleware{
-		allowedOrigins: []string{"*"}, // In production, specify exact origins
+		// Thêm các origin cần thiết
+		allowedOrigins: []string{
+			"*", // Cho phép tất cả origins (chỉ dùng trong development)
+			"http://localhost:3000",
+			"http://localhost:8080",
+			"http://127.0.0.1:3000",
+			"http://127.0.0.1:8080",
+			"https://localhost:3000",
+			"https://localhost:8080",
+			// Thêm domain của frontend nếu có
+		},
 		allowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		allowedHeaders: []string{
 			"Origin",
@@ -25,6 +36,9 @@ func NewCorsMiddleware() *CorsMiddleware {
 			"X-Request-ID",
 			"X-Forwarded-For",
 			"X-Real-IP",
+			"Access-Control-Allow-Origin",
+			"Access-Control-Allow-Headers",
+			"Access-Control-Allow-Methods",
 		},
 	}
 }
@@ -33,21 +47,24 @@ func (m *CorsMiddleware) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
-		// Set CORS headers
+		// Luôn luôn set CORS headers
 		if m.isOriginAllowed(origin) {
 			c.Header("Access-Control-Allow-Origin", origin)
-		} else if len(m.allowedOrigins) == 1 && m.allowedOrigins[0] == "*" {
+		} else {
+			// Trong development, cho phép tất cả origins
 			c.Header("Access-Control-Allow-Origin", "*")
 		}
 
 		c.Header("Access-Control-Allow-Methods", m.joinStrings(m.allowedMethods))
 		c.Header("Access-Control-Allow-Headers", m.joinStrings(m.allowedHeaders))
-		c.Header("Access-Control-Expose-Headers", "Authorization")
+		c.Header("Access-Control-Expose-Headers", "Authorization, Content-Length, X-Requested-With")
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "86400") // 24 hours
 
 		// Handle preflight requests
 		if c.Request.Method == "OPTIONS" {
+			c.Header("Content-Type", "text/plain; charset=utf-8")
+			c.Header("Content-Length", "0")
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
@@ -58,14 +75,19 @@ func (m *CorsMiddleware) Handler() gin.HandlerFunc {
 
 func (m *CorsMiddleware) SecurityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Security headers
+		// Security headers - nhưng không quá strict để tránh CORS issues
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-Frame-Options", "SAMEORIGIN") // Thay đổi từ DENY
 		c.Header("X-XSS-Protection", "1; mode=block")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'")
-		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
-		c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+
+		// CSP không quá strict
+		c.Header("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval' *")
+
+		// Chỉ set HSTS nếu đang sử dụng HTTPS
+		if c.Request.TLS != nil {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		// Remove server information
 		c.Header("Server", "")
@@ -75,9 +97,20 @@ func (m *CorsMiddleware) SecurityHeaders() gin.HandlerFunc {
 }
 
 func (m *CorsMiddleware) isOriginAllowed(origin string) bool {
+	if origin == "" {
+		return true // Allow requests without origin (e.g., mobile apps)
+	}
+
 	for _, allowedOrigin := range m.allowedOrigins {
 		if allowedOrigin == "*" || allowedOrigin == origin {
 			return true
+		}
+		// Check for wildcard subdomains
+		if strings.HasPrefix(allowedOrigin, "*.") {
+			domain := strings.TrimPrefix(allowedOrigin, "*.")
+			if strings.HasSuffix(origin, domain) {
+				return true
+			}
 		}
 	}
 	return false
