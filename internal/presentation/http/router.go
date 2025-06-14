@@ -204,21 +204,8 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 				userBulk := bulk.Group("/users")
 				{
 					userBulk.POST("/create", r.bulkHandler.BulkCreateUsers)
-					userBulk.POST("/actions", r.bulkHandler.BulkUserActions)
-					userBulk.POST("/extend", r.bulkHandler.BulkExtendUsers)
 					userBulk.POST("/import", r.bulkHandler.ImportUsers)
 					userBulk.GET("/template", r.bulkHandler.ExportUserTemplate)
-					userBulk.GET("/export", r.bulkHandler.ExportUsers)
-				}
-
-				// Enhanced group bulk operations with comprehensive file processing
-				groupBulk := bulk.Group("/groups")
-				{
-					groupBulk.POST("/create", r.bulkHandler.BulkCreateGroups)
-					groupBulk.POST("/actions", r.bulkHandler.BulkGroupActions)
-					groupBulk.POST("/import", r.bulkHandler.ImportGroups)
-					groupBulk.GET("/template", r.bulkHandler.ExportGroupTemplate)
-					groupBulk.GET("/export", r.bulkHandler.ExportGroups)
 				}
 
 				// Enhanced job management for asynchronous operations

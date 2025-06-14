@@ -48,25 +48,7 @@ type BulkUsecase interface {
 
 	// =================== BULK VALIDATION & UTILITIES ===================
 
-	// ValidateUserBatch validates a batch of users before processing
-	// Returns validation errors and cleaned data
-	ValidateUserBatch(users []dto.CreateUserRequest) (valid []dto.CreateUserRequest, errors []dto.ImportValidationError, err error)
-
-	// ValidateGroupBatch validates a batch of groups before processing
-	// Returns validation errors and cleaned data
-	ValidateGroupBatch(groups []dto.CreateGroupRequest) (valid []dto.CreateGroupRequest, errors []dto.ImportValidationError, err error)
-
 	// ParseImportFile parses uploaded file and returns structured data
 	// Supports multiple file formats and validates content
 	ParseImportFile(filename string, content []byte, format string, entityType string) (interface{}, []dto.ImportValidationError, error)
-
-	// =================== BATCH REPORTING ===================
-
-	// GetBulkOperationStatus gets status of ongoing bulk operations
-	// Returns progress information for long-running operations
-	GetBulkOperationStatus(ctx context.Context, operationId string) (interface{}, error)
-
-	// GetBulkOperationHistory gets history of bulk operations
-	// Returns list of previous bulk operations with results
-	GetBulkOperationHistory(ctx context.Context, entityType string, limit int) ([]interface{}, error)
 }

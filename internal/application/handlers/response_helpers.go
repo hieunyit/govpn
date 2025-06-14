@@ -305,53 +305,6 @@ func RespondWithActionResult(c *gin.Context, action string, success bool, messag
 
 // =================== AUTHENTICATION RESPONSE HELPERS ===================
 
-// RespondWithAuthSuccess sends a response for successful authentication with security context
-func RespondWithAuthSuccess(c *gin.Context, tokenData interface{}, userInfo interface{}) {
-	responseData := map[string]interface{}{
-		"tokens":    tokenData,
-		"user":      userInfo,
-		"issued_at": time.Now().UTC().Format(time.RFC3339),
-		"security": map[string]interface{}{
-			"token_type":        "Bearer",
-			"secure_connection": c.GetHeader("X-Forwarded-Proto") == "https",
-			"ip_address":        c.ClientIP(),
-		},
-	}
-
-	logger.Log.WithFields(map[string]interface{}{
-		"event":      "authentication_success",
-		"ip":         c.ClientIP(),
-		"user_agent": c.GetHeader("User-Agent"),
-		"request_id": httpPkg.getOrGenerateRequestID(c),
-	}).Info("Authentication successful")
-
-	httpPkg.RespondWithSuccess(c, http.StatusOK, responseData, "auth", "login")
-}
-
-// RespondWithAuthError sends a response for authentication errors with security guidance
-func RespondWithAuthError(c *gin.Context, errorCode, message string, securityDetails interface{}) {
-	authError := errors.Unauthorized(message, map[string]interface{}{
-		"error_code":       errorCode,
-		"security_details": securityDetails,
-		"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		"help": []string{
-			"Verify your credentials",
-			"Check if your account is locked",
-			"Contact support if issues persist",
-		},
-	})
-
-	logger.Log.WithFields(map[string]interface{}{
-		"event":      "authentication_failed",
-		"error_code": errorCode,
-		"ip":         c.ClientIP(),
-		"user_agent": c.GetHeader("User-Agent"),
-		"request_id": httpPkg.getOrGenerateRequestID(c),
-	}).Warn("Authentication failed")
-
-	httpPkg.RespondWithError(c, authError)
-}
-
 // =================== VALIDATION HELPERS ===================
 
 // RespondWithValidationErrors sends detailed validation error responses
