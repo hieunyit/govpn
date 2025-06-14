@@ -355,6 +355,12 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 		return
 	}
 
+	// ✅ FIX: Calculate Offset from Page and Limit
+	offset := 0
+	if filter.Page > 1 {
+		offset = (filter.Page - 1) * filter.Limit
+	}
+
 	// Convert DTO filter to entity filter
 	entityFilter := &entities.GroupFilter{
 		GroupName:  filter.GroupName,
@@ -362,9 +368,11 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 		Role:       filter.Role,
 		Page:       filter.Page,
 		Limit:      filter.Limit,
+		Offset:     offset, // ✅ FIX: Set calculated offset
 	}
 
-	groups, err := h.groupUsecase.ListGroups(c.Request.Context(), entityFilter)
+	// Get groups with total count
+	groups, totalCount, err := h.groupUsecase.ListGroupsWithTotal(c.Request.Context(), entityFilter)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			RespondWithError(c, appErr)
@@ -389,7 +397,7 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 
 	response := dto.GroupListResponse{
 		Groups: groupResponses,
-		Total:  len(groupResponses),
+		Total:  totalCount, // ✅ Fixed total count
 		Page:   filter.Page,
 		Limit:  filter.Limit,
 	}

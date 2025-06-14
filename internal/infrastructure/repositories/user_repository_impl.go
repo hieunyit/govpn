@@ -115,22 +115,38 @@ func (r *userRepositoryImpl) List(ctx context.Context, filter *entities.UserFilt
 		}
 	}
 
-	// Apply pagination
-	start := filter.Offset
-	end := start + filter.Limit
+	// ✅ FIX: Apply pagination with proper offset calculation
+	if filter.Limit > 0 {
+		// Calculate offset from page if not provided
+		offset := filter.Offset
+		if offset == 0 && filter.Page > 1 {
+			offset = (filter.Page - 1) * filter.Limit
+		}
 
-	if start > len(filteredUsers) {
-		return []*entities.User{}, nil
+		start := offset
+		end := start + filter.Limit
+
+		if start > len(filteredUsers) {
+			return []*entities.User{}, nil
+		}
+
+		if end > len(filteredUsers) {
+			end = len(filteredUsers)
+		}
+
+		result := filteredUsers[start:end]
+		logger.Log.WithField("total", len(filteredUsers)).
+			WithField("returned", len(result)).
+			WithField("page", filter.Page).
+			WithField("offset", offset).
+			Info("Users listed successfully")
+
+		return result, nil
 	}
 
-	if end > len(filteredUsers) {
-		end = len(filteredUsers)
-	}
-
-	result := filteredUsers[start:end]
-	logger.Log.WithField("total", len(filteredUsers)).WithField("returned", len(result)).Info("Users listed successfully")
-
-	return result, nil
+	// If no pagination, return all filtered results
+	logger.Log.WithField("total", len(filteredUsers)).Info("All filtered users returned")
+	return filteredUsers, nil
 }
 
 func (r *userRepositoryImpl) matchesFilter(user *entities.User, filter *entities.UserFilter) bool {

@@ -59,7 +59,39 @@ func (u *groupUsecaseImpl) GetGroup(ctx context.Context, groupName string) (*ent
 
 	return group, nil
 }
+func (u *groupUsecaseImpl) ListGroupsWithTotal(ctx context.Context, filter *entities.GroupFilter) ([]*entities.Group, int, error) {
+	logger.Log.WithField("filter", filter).Debug("Listing groups with total count")
 
+	// First get total count (without pagination)
+	totalFilter := &entities.GroupFilter{
+		GroupName:  filter.GroupName,
+		AuthMethod: filter.AuthMethod,
+		Role:       filter.Role,
+		// Don't include pagination for total count
+		Page:  0,
+		Limit: 0,
+	}
+
+	allGroups, err := u.groupRepo.List(ctx, totalFilter)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get total group count")
+		return nil, 0, errors.InternalServerError("Failed to get total group count", err)
+	}
+	totalCount := len(allGroups)
+
+	// Then get paginated results
+	paginatedGroups, err := u.groupRepo.List(ctx, filter)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get paginated groups")
+		return nil, 0, errors.InternalServerError("Failed to get paginated groups", err)
+	}
+
+	logger.Log.WithField("totalCount", totalCount).
+		WithField("pageSize", len(paginatedGroups)).
+		Info("Groups retrieved with total count")
+
+	return paginatedGroups, totalCount, nil
+}
 func (u *groupUsecaseImpl) UpdateGroup(ctx context.Context, group *entities.Group) error {
 	logger.Log.WithField("groupName", group.GroupName).Info("Updating group")
 
@@ -91,6 +123,30 @@ func (u *groupUsecaseImpl) UpdateGroup(ctx context.Context, group *entities.Grou
 
 	logger.Log.WithField("groupName", group.GroupName).Info("Group updated successfully")
 	return nil
+}
+
+func (g *groupUsecaseImpl) ListGroupsWithCount(ctx context.Context, filter *entities.GroupFilter) ([]*entities.Group, int, error) {
+	// Get total count without pagination
+	totalFilter := &entities.GroupFilter{
+		GroupName:  filter.GroupName,
+		AuthMethod: filter.AuthMethod,
+		Role:       filter.Role,
+		// No pagination params for count
+	}
+
+	allGroups, err := g.groupRepo.List(ctx, totalFilter)
+	if err != nil {
+		return nil, 0, errors.InternalServerError("Failed to count groups", err)
+	}
+	totalCount := len(allGroups)
+
+	// Get paginated results
+	groups, err := g.groupRepo.List(ctx, filter)
+	if err != nil {
+		return nil, 0, errors.InternalServerError("Failed to retrieve groups", err)
+	}
+
+	return groups, totalCount, nil
 }
 
 func (u *groupUsecaseImpl) DeleteGroup(ctx context.Context, groupName string) error {

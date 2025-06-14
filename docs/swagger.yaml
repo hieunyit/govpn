@@ -873,28 +873,52 @@ definitions:
         items:
           type: string
         type: array
-      password:
-        example: NewSecurePass123!
-        minLength: 8
-        type: string
       userExpiration:
         example: 31/12/2025
         type: string
     type: object
-  dto.UserExpirationResponse:
+  dto.UserExpirationInfo:
     properties:
-      count:
-        example: 2
-        type: integer
-      days:
-        example: 7
-        type: integer
-      emails:
-        example:
-        - user1@example.com
-        - user2@example.com
+      accessControl:
         items:
           type: string
+        type: array
+      authMethod:
+        type: string
+      daysUntilExpiry:
+        description: 'NEW: Số ngày còn lại'
+        type: integer
+      denyAccess:
+        type: boolean
+      email:
+        type: string
+      expirationStatus:
+        description: 'NEW: "expired", "expiring", "warning"'
+        type: string
+      groupName:
+        type: string
+      macAddresses:
+        items:
+          type: string
+        type: array
+      mfa:
+        type: boolean
+      role:
+        type: string
+      userExpiration:
+        type: string
+      username:
+        type: string
+    type: object
+  dto.UserExpirationsResponse:
+    properties:
+      count:
+        type: integer
+      days:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/dto.UserExpirationInfo'
         type: array
     type: object
   dto.UserInfo:
@@ -1985,27 +2009,33 @@ paths:
       - Users
   /api/users/expirations:
     get:
-      description: Get users that will expire in the specified number of days
+      description: Get users that will expire in the specified number of days with
+        complete user details
       parameters:
       - default: 7
-        description: Number of days
+        description: Number of days to check for expiration
         in: query
         name: days
         type: integer
+      - default: false
+        description: Include already expired users
+        in: query
+        name: includeExpired
+        type: boolean
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dto.UserExpirationResponse'
+            $ref: '#/definitions/dto.UserExpirationsResponse'
         "400":
           description: Bad Request
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get expiring users
+      summary: Get expiring users with full information
       tags:
       - Users
   /auth/login:

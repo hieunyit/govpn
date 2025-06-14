@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"govpn/internal/application/dto"
 	"govpn/internal/domain/entities"
 )
 
@@ -12,7 +13,8 @@ type UserUsecase interface {
 	UpdateUser(ctx context.Context, user *entities.User) error
 	DeleteUser(ctx context.Context, username string) error
 	ListUsers(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, error)
-
+	ListUsersWithCount(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, int, error)
+	ListUsersWithTotal(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, int, error)
 	// User operations
 	EnableUser(ctx context.Context, username string) error
 	DisableUser(ctx context.Context, username string) error
@@ -21,4 +23,5 @@ type UserUsecase interface {
 
 	// Expiration operations
 	GetExpiringUsers(ctx context.Context, days int) ([]string, error)
+	GetUserExpirations(ctx context.Context, days int) (*dto.UserExpirationsResponse, error)
 }

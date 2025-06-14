@@ -1367,20 +1367,27 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get users that will expire in the specified number of days",
+                "description": "Get users that will expire in the specified number of days with complete user details",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Users"
                 ],
-                "summary": "Get expiring users",
+                "summary": "Get expiring users with full information",
                 "parameters": [
                     {
                         "type": "integer",
                         "default": 7,
-                        "description": "Number of days",
+                        "description": "Number of days to check for expiration",
                         "name": "days",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include already expired users",
+                        "name": "includeExpired",
                         "in": "query"
                     }
                 ],
@@ -1388,7 +1395,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dto.UserExpirationResponse"
+                            "$ref": "#/definitions/dto.UserExpirationsResponse"
                         }
                     },
                     "400": {
@@ -2933,37 +2940,75 @@
                         "5E:CD:C9:D4:88:65"
                     ]
                 },
-                "password": {
-                    "type": "string",
-                    "minLength": 8,
-                    "example": "NewSecurePass123!"
-                },
                 "userExpiration": {
                     "type": "string",
                     "example": "31/12/2025"
                 }
             }
         },
-        "dto.UserExpirationResponse": {
+        "dto.UserExpirationInfo": {
             "type": "object",
             "properties": {
-                "count": {
-                    "type": "integer",
-                    "example": 2
-                },
-                "days": {
-                    "type": "integer",
-                    "example": 7
-                },
-                "emails": {
+                "accessControl": {
                     "type": "array",
                     "items": {
                         "type": "string"
-                    },
-                    "example": [
-                        "user1@example.com",
-                        "user2@example.com"
-                    ]
+                    }
+                },
+                "authMethod": {
+                    "type": "string"
+                },
+                "daysUntilExpiry": {
+                    "description": "NEW: Số ngày còn lại",
+                    "type": "integer"
+                },
+                "denyAccess": {
+                    "type": "boolean"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "expirationStatus": {
+                    "description": "NEW: \"expired\", \"expiring\", \"warning\"",
+                    "type": "string"
+                },
+                "groupName": {
+                    "type": "string"
+                },
+                "macAddresses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "mfa": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "userExpiration": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UserExpirationsResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "days": {
+                    "type": "integer"
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.UserExpirationInfo"
+                    }
                 }
             }
         },

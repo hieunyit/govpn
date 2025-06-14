@@ -105,22 +105,38 @@ func (r *groupRepositoryImpl) List(ctx context.Context, filter *entities.GroupFi
 		}
 	}
 
-	// Apply pagination
-	start := filter.Offset
-	end := start + filter.Limit
+	// ✅ FIX: Apply pagination with proper offset calculation
+	if filter.Limit > 0 {
+		// Calculate offset from page if not provided
+		offset := filter.Offset
+		if offset == 0 && filter.Page > 1 {
+			offset = (filter.Page - 1) * filter.Limit
+		}
 
-	if start > len(filteredGroups) {
-		return []*entities.Group{}, nil
+		start := offset
+		end := start + filter.Limit
+
+		if start > len(filteredGroups) {
+			return []*entities.Group{}, nil
+		}
+
+		if end > len(filteredGroups) {
+			end = len(filteredGroups)
+		}
+
+		result := filteredGroups[start:end]
+		logger.Log.WithField("total", len(filteredGroups)).
+			WithField("returned", len(result)).
+			WithField("page", filter.Page).
+			WithField("offset", offset).
+			Info("Groups listed successfully")
+
+		return result, nil
 	}
 
-	if end > len(filteredGroups) {
-		end = len(filteredGroups)
-	}
-
-	result := filteredGroups[start:end]
-	logger.Log.WithField("total", len(filteredGroups)).WithField("returned", len(result)).Info("Groups listed successfully")
-
-	return result, nil
+	// If no pagination, return all filtered results
+	logger.Log.WithField("total", len(filteredGroups)).Info("All filtered groups returned")
+	return filteredGroups, nil
 }
 
 func (r *groupRepositoryImpl) matchesFilter(group *entities.Group, filter *entities.GroupFilter) bool {

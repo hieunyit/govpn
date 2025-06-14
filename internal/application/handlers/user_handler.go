@@ -186,22 +186,6 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// CRITICAL FIX: Validate password update based on auth method
-	if req.Password != "" {
-		if existingUser.AuthMethod == "ldap" {
-			logger.Log.WithField("username", username).
-				WithField("authMethod", existingUser.AuthMethod).
-				Error("Attempted to change password for LDAP user")
-			respondWithError(c, errors.BadRequest("Password cannot be changed for LDAP users. LDAP users must change password through LDAP system.", nil))
-			return
-		}
-
-		if existingUser.AuthMethod == "local" && len(req.Password) < 8 {
-			respondWithError(c, errors.BadRequest("Password must be at least 8 characters", nil))
-			return
-		}
-	}
-
 	// Convert DTO to entity (password handled separately above)
 	user := &entities.User{
 		Username:       username,
@@ -216,8 +200,6 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	logger.Log.WithField("username", username).
 		WithField("authMethod", existingUser.AuthMethod).
-		WithField("hasPassword", req.Password != "").
-		WithField("willChangePassword", req.Password != "" && existingUser.AuthMethod == "local").
 		Info("Updating user")
 
 	// Update user
@@ -228,15 +210,6 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 			respondWithError(c, errors.InternalServerError("Failed to update user", err))
 		}
 		return
-	}
-
-	// CRITICAL FIX: Only change password for local users
-	if req.Password != "" && existingUser.AuthMethod == "local" {
-		if err := h.userUsecase.ChangePassword(c.Request.Context(), username, req.Password); err != nil {
-			logger.Log.WithError(err).Error("Failed to change user password during update")
-			respondWithError(c, errors.InternalServerError("Failed to update password", err))
-			return
-		}
 	}
 
 	// Restart OpenVPN service
@@ -434,6 +407,12 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
+	// ✅ FIX: Calculate Offset from Page and Limit
+	offset := 0
+	if filter.Page > 1 {
+		offset = (filter.Page - 1) * filter.Limit
+	}
+
 	entityFilter := &entities.UserFilter{
 		Username:   filter.Username,
 		Email:      filter.Email,
@@ -442,9 +421,11 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		GroupName:  filter.GroupName,
 		Page:       filter.Page,
 		Limit:      filter.Limit,
+		Offset:     offset, // ✅ FIX: Set calculated offset
 	}
 
-	users, err := h.userUsecase.ListUsers(c.Request.Context(), entityFilter)
+	// Get users with total count
+	users, totalCount, err := h.userUsecase.ListUsersWithTotal(c.Request.Context(), entityFilter)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			respondWithError(c, appErr)
@@ -472,7 +453,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 
 	response := dto.UserListResponse{
 		Users: userResponses,
-		Total: len(userResponses),
+		Total: totalCount, // ✅ Fixed total count
 		Page:  filter.Page,
 		Limit: filter.Limit,
 	}
@@ -481,13 +462,14 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 }
 
 // GetUserExpirations godoc
-// @Summary Get expiring users
-// @Description Get users that will expire in the specified number of days
+// @Summary Get expiring users with full information
+// @Description Get users that will expire in the specified number of days with complete user details
 // @Tags Users
 // @Security BearerAuth
 // @Produce json
-// @Param days query int false "Number of days" default(7)
-// @Success 200 {object} dto.UserExpirationResponse
+// @Param days query int false "Number of days to check for expiration" default(7)
+// @Param includeExpired query bool false "Include already expired users" default(false)
+// @Success 200 {object} dto.UserExpirationsResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Router /api/users/expirations [get]
 func (h *UserHandler) GetUserExpirations(c *gin.Context) {
@@ -498,20 +480,35 @@ func (h *UserHandler) GetUserExpirations(c *gin.Context) {
 		return
 	}
 
-	emails, err := h.userUsecase.GetExpiringUsers(c.Request.Context(), days)
+	// ✅ NEW: Optional parameter to include expired users
+	includeExpiredStr := c.DefaultQuery("includeExpired", "false")
+	includeExpired, _ := strconv.ParseBool(includeExpiredStr)
+
+	logger.Log.WithField("days", days).
+		WithField("includeExpired", includeExpired).
+		Info("Getting user expirations")
+
+	// ✅ FIX: Call new method that returns full user info
+	response, err := h.userUsecase.GetUserExpirations(c.Request.Context(), days)
 	if err != nil {
 		if appErr, ok := err.(*errors.AppError); ok {
 			respondWithError(c, appErr)
 		} else {
-			respondWithError(c, errors.InternalServerError("Failed to get expiring users", err))
+			respondWithError(c, errors.InternalServerError("Failed to get user expirations", err))
 		}
 		return
 	}
 
-	response := dto.UserExpirationResponse{
-		Emails: emails,
-		Count:  len(emails),
-		Days:   days,
+	// ✅ NEW: Filter expired users based on includeExpired parameter
+	if !includeExpired {
+		filteredUsers := make([]dto.UserExpirationInfo, 0)
+		for _, user := range response.Users {
+			if user.ExpirationStatus != "expired" {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		response.Users = filteredUsers
+		response.Count = len(filteredUsers)
 	}
 
 	respondWithSuccess(c, nethttp.StatusOK, response)

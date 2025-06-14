@@ -3,13 +3,16 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"govpn/internal/application/dto"
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/repositories"
 	"govpn/internal/infrastructure/ldap"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
+	"sort"
 	"strings"
+	"time"
 )
 
 type userUsecaseImpl struct {
@@ -219,6 +222,205 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 	return nil
 }
 
+func (u *userUsecaseImpl) GetUserExpirations(ctx context.Context, days int) (*dto.UserExpirationsResponse, error) {
+	logger.Log.WithField("days", days).Info("Getting user expirations with full info")
+
+	if days < 0 || days > 365 {
+		return nil, errors.BadRequest("Days must be between 0 and 365", nil)
+	}
+
+	// Get all users
+	users, err := u.userRepo.List(ctx, &entities.UserFilter{
+		Limit:  10000, // Get all users
+		Offset: 0,
+	})
+	if err != nil {
+		return nil, errors.InternalServerError("Failed to get users", err)
+	}
+
+	var expiringUsers []dto.UserExpirationInfo
+	currentTime := time.Now()
+	targetDate := currentTime.AddDate(0, 0, days)
+
+	for _, user := range users {
+		if user.UserExpiration == "" {
+			continue // Skip users without expiration
+		}
+
+		// Parse expiration date
+		expirationTime, err := time.Parse("2006-01-02", user.UserExpiration)
+		if err != nil {
+			// Try alternative format
+			expirationTime, err = time.Parse("02/01/2006", user.UserExpiration)
+			if err != nil {
+				logger.Log.WithField("username", user.Username).
+					WithField("expiration", user.UserExpiration).
+					Warn("Failed to parse expiration date")
+				continue
+			}
+		}
+
+		// Calculate days until expiry
+		daysUntilExpiry := int(expirationTime.Sub(currentTime).Hours() / 24)
+
+		// ✅ FIX: Check if user expires within the target date range
+		if expirationTime.After(targetDate) && !expirationTime.Before(currentTime) {
+			continue // Not expiring within the specified period
+		}
+
+		// Determine expiration status
+		var status string
+		if expirationTime.Before(currentTime) {
+			status = "expired"
+		} else if daysUntilExpiry <= 3 {
+			status = "critical" // Expires in 3 days or less
+		} else if daysUntilExpiry <= 7 {
+			status = "warning" // Expires in 7 days or less
+		} else {
+			status = "expiring" // Expires within specified days
+		}
+
+		// Get group information if user has a custom group
+		var accessControl []string
+		if user.GroupName != "__DEFAULT__" && user.GroupName != "" {
+			group, err := u.groupRepo.GetByName(ctx, user.GroupName)
+			if err == nil {
+				accessControl = group.AccessControl
+			}
+		}
+		if len(user.AccessControl) > 0 {
+			accessControl = user.AccessControl
+		}
+
+		expiringUser := dto.UserExpirationInfo{
+			Username:         user.Username,
+			Email:            user.Email,
+			UserExpiration:   user.UserExpiration,
+			AuthMethod:       user.AuthMethod,
+			Role:             user.Role,
+			GroupName:        user.GroupName,
+			DenyAccess:       user.DenyAccess == "true",
+			MFA:              user.MFA == "true",
+			AccessControl:    accessControl,
+			MacAddresses:     user.MacAddresses,
+			DaysUntilExpiry:  daysUntilExpiry,
+			ExpirationStatus: status,
+		}
+
+		expiringUsers = append(expiringUsers, expiringUser)
+	}
+
+	// Sort by days until expiry (most urgent first)
+	sort.Slice(expiringUsers, func(i, j int) bool {
+		return expiringUsers[i].DaysUntilExpiry < expiringUsers[j].DaysUntilExpiry
+	})
+
+	response := &dto.UserExpirationsResponse{
+		Users: expiringUsers,
+		Count: len(expiringUsers),
+		Days:  days,
+	}
+
+	logger.Log.WithField("count", len(expiringUsers)).
+		WithField("days", days).
+		Info("User expirations retrieved successfully")
+
+	return response, nil
+}
+
+func (u *userUsecaseImpl) GetExpiringUsers(ctx context.Context, days int) ([]string, error) {
+	logger.Log.WithField("days", days).Info("Getting expiring user emails (legacy)")
+
+	response, err := u.GetUserExpirations(ctx, days)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract emails for backward compatibility
+	emails := make([]string, 0, len(response.Users))
+	for _, user := range response.Users {
+		if user.Email != "" && user.ExpirationStatus != "expired" {
+			emails = append(emails, user.Email)
+		}
+	}
+
+	return emails, nil
+}
+
+func (u *userUsecaseImpl) ListUsersWithCount(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, int, error) {
+	// Get total count without pagination
+	totalFilter := &entities.UserFilter{
+		Username:   filter.Username,
+		Email:      filter.Email,
+		AuthMethod: filter.AuthMethod,
+		Role:       filter.Role,
+		GroupName:  filter.GroupName,
+		// No pagination params for count
+	}
+
+	allUsers, err := u.userRepo.List(ctx, totalFilter)
+	if err != nil {
+		return nil, 0, errors.InternalServerError("Failed to count users", err)
+	}
+	totalCount := len(allUsers)
+
+	// Get paginated results
+	users, err := u.userRepo.List(ctx, filter)
+	if err != nil {
+		return nil, 0, errors.InternalServerError("Failed to retrieve users", err)
+	}
+
+	return users, totalCount, nil
+}
+
+func (u *userUsecaseImpl) ListUsersWithTotal(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, int, error) {
+	logger.Log.WithField("filter", filter).Debug("Listing users with total count")
+
+	// First get total count (without pagination)
+	totalFilter := &entities.UserFilter{
+		Username:   filter.Username,
+		Email:      filter.Email,
+		AuthMethod: filter.AuthMethod,
+		Role:       filter.Role,
+		GroupName:  filter.GroupName,
+		// Don't include pagination for total count
+		Page:  0,
+		Limit: 0,
+	}
+
+	allUsers, err := u.userRepo.List(ctx, totalFilter)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get total user count")
+		return nil, 0, errors.InternalServerError("Failed to get total user count", err)
+	}
+	totalCount := len(allUsers)
+
+	// Then get paginated results
+	paginatedUsers, err := u.userRepo.List(ctx, filter)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get paginated users")
+		return nil, 0, errors.InternalServerError("Failed to get paginated users", err)
+	}
+
+	// Enhance users with group information (same as existing ListUsers method)
+	for _, user := range paginatedUsers {
+		if user.GroupName != "__DEFAULT__" && user.GroupName != "" {
+			group, err := u.groupRepo.GetByName(ctx, user.GroupName)
+			if err != nil {
+				logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to get user group")
+				continue
+			}
+			user.AccessControl = group.AccessControl
+		}
+	}
+
+	logger.Log.WithField("totalCount", totalCount).
+		WithField("pageSize", len(paginatedUsers)).
+		Info("Users retrieved with total count")
+
+	return paginatedUsers, totalCount, nil
+}
+
 // DeleteUser deletes a user
 func (u *userUsecaseImpl) DeleteUser(ctx context.Context, username string) error {
 	logger.Log.WithField("username", username).Info("Deleting user")
@@ -398,26 +600,6 @@ func (u *userUsecaseImpl) RegenerateTOTP(ctx context.Context, username string) e
 
 	logger.Log.WithField("username", username).Info("TOTP regenerated successfully")
 	return nil
-}
-
-// GetExpiringUsers gets users expiring within specified days
-func (u *userUsecaseImpl) GetExpiringUsers(ctx context.Context, days int) ([]string, error) {
-	logger.Log.WithField("days", days).Info("Getting expiring users")
-
-	if days < 0 || days > 365 {
-		return nil, errors.BadRequest("Days must be between 0 and 365", nil)
-	}
-
-	emails, err := u.userRepo.GetExpiringUsers(ctx, days)
-	if err != nil {
-		return nil, errors.InternalServerError("Failed to get expiring users", err)
-	}
-
-	if len(emails) == 0 {
-		return []string{}, nil
-	}
-
-	return emails, nil
 }
 
 // =================== HELPER VALIDATION METHODS ===================

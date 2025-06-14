@@ -21,7 +21,7 @@ type UserFilter struct {
 	Role       string
 	GroupName  string
 	Limit      int
-	Offset     int
+	Offset     int // ✅ Make sure this exists
 	Page       int
 }
 

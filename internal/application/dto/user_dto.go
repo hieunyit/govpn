@@ -14,7 +14,6 @@ type CreateUserRequest struct {
 }
 
 type UpdateUserRequest struct {
-	Password       string   `json:"password,omitempty" validate:"omitempty,min=8" example:"NewSecurePass123!"`
 	UserExpiration string   `json:"userExpiration,omitempty" validate:"omitempty,date" example:"31/12/2025"`
 	DenyAccess     *bool    `json:"denyAccess,omitempty" example:"false"`
 	MacAddresses   []string `json:"macAddresses,omitempty" validate:"omitempty,dive,mac_address" example:"5E:CD:C9:D4:88:65"`
@@ -54,6 +53,26 @@ type UserExpirationResponse struct {
 	Emails []string `json:"emails" example:"user1@example.com,user2@example.com"`
 	Count  int      `json:"count" example:"2"`
 	Days   int      `json:"days" example:"7"`
+}
+
+type UserExpirationsResponse struct {
+	Users []UserExpirationInfo `json:"users"`
+	Count int                  `json:"count"`
+	Days  int                  `json:"days"`
+}
+type UserExpirationInfo struct {
+	Username         string   `json:"username"`
+	Email            string   `json:"email"`
+	UserExpiration   string   `json:"userExpiration"`
+	AuthMethod       string   `json:"authMethod"`
+	Role             string   `json:"role"`
+	GroupName        string   `json:"groupName"`
+	DenyAccess       bool     `json:"denyAccess"`
+	MFA              bool     `json:"mfa"`
+	AccessControl    []string `json:"accessControl,omitempty"`
+	MacAddresses     []string `json:"macAddresses,omitempty"`
+	DaysUntilExpiry  int      `json:"daysUntilExpiry"`  // NEW: Số ngày còn lại
+	ExpirationStatus string   `json:"expirationStatus"` // NEW: "expired", "expiring", "warning"
 }
 
 type UserFilter struct {

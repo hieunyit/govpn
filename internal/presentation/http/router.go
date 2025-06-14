@@ -47,6 +47,10 @@ func (r *RouterUpdated) SetupRoutes() *gin.Engine {
 
 	router := gin.New()
 
+	// ✅ FIX: Disable automatic redirect for trailing slash to fix 301 issue
+	router.RedirectTrailingSlash = false
+	router.RedirectFixedPath = false
+
 	// Global middleware
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
@@ -100,10 +104,16 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 		api := protected.Group("/api")
 		{
 			// =================== EXISTING USER ROUTES ===================
+			// ✅ FIX: Register both with and without trailing slash to handle both cases
 			users := api.Group("/users")
 			{
+				// Basic CRUD operations - supporting both /users and /users/
+				users.POST("", r.userHandler.CreateUser)
 				users.POST("/", r.userHandler.CreateUser)
+				users.GET("", r.userHandler.ListUsers)
 				users.GET("/", r.userHandler.ListUsers)
+
+				// Specific endpoints
 				users.GET("/expirations", r.userHandler.GetUserExpirations)
 				users.GET("/:username", r.userHandler.GetUser)
 				users.PUT("/:username", r.userHandler.UpdateUser)
@@ -112,10 +122,16 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 			}
 
 			// =================== EXISTING GROUP ROUTES ===================
+			// ✅ FIX: Register both with and without trailing slash to handle both cases
 			groups := api.Group("/groups")
 			{
+				// Basic CRUD operations - supporting both /groups and /groups/
+				groups.POST("", r.groupHandler.CreateGroup)
 				groups.POST("/", r.groupHandler.CreateGroup)
+				groups.GET("", r.groupHandler.ListGroups)
 				groups.GET("/", r.groupHandler.ListGroups)
+
+				// Specific endpoints
 				groups.GET("/:groupName", r.groupHandler.GetGroup)
 				groups.PUT("/:groupName", r.groupHandler.UpdateGroup)
 				groups.DELETE("/:groupName", r.groupHandler.DeleteGroup)
@@ -178,7 +194,8 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 }
 
 func (r *RouterUpdated) healthCheck(c *gin.Context) {
-	RespondWithSuccess(c, 200, gin.H{
+	// Use helper function from handlers package
+	handlers.RespondWithSuccess(c, 200, gin.H{
 		"status":    "healthy",
 		"timestamp": time.Now().UTC(),
 		"service":   "govpn-api",
@@ -193,7 +210,8 @@ func (r *RouterUpdated) healthCheck(c *gin.Context) {
 }
 
 func (r *RouterUpdated) apiInfo(c *gin.Context) {
-	RespondWithSuccess(c, 200, gin.H{
+	// Use helper function from handlers package
+	handlers.RespondWithSuccess(c, 200, gin.H{
 		"service":     "GoVPN API",
 		"version":     "1.1.0", // Updated version
 		"description": "OpenVPN Access Server Management API with Bulk Operations and Advanced Search",
