@@ -418,6 +418,51 @@ definitions:
     required:
     - password
     type: object
+  dto.ConnectedUserResponse:
+    properties:
+      bytes_received:
+        example: 1048576
+        type: integer
+      bytes_sent:
+        example: 2097152
+        type: integer
+      client_id:
+        example: "5"
+        type: string
+      common_name:
+        example: user123
+        type: string
+      connected_since:
+        example: "2025-06-14T14:30:25Z"
+        type: string
+      connected_since_unix:
+        example: 1749910225
+        type: integer
+      connection_duration:
+        example: 37m41s
+        type: string
+      country:
+        example: Vietnam
+        type: string
+      data_channel_cipher:
+        example: AES-256-GCM
+        type: string
+      peer_id:
+        example: "12"
+        type: string
+      real_address:
+        example: 203.113.45.123
+        type: string
+      username:
+        example: user123
+        type: string
+      virtual_address:
+        example: 172.27.232.15
+        type: string
+      virtual_ipv6_address:
+        example: ""
+        type: string
+    type: object
   dto.CreateGroupRequest:
     properties:
       accessControl:
@@ -844,6 +889,19 @@ definitions:
         example: 5
         type: integer
     type: object
+  dto.SuccessResponse:
+    properties:
+      success:
+        properties:
+          data: {}
+          message:
+            example: Operation successful
+            type: string
+          status:
+            example: 200
+            type: integer
+        type: object
+    type: object
   dto.UpdateGroupRequest:
     properties:
       accessControl:
@@ -1009,6 +1067,19 @@ definitions:
         type: string
       unfilteredTotal:
         example: 500
+        type: integer
+    type: object
+  dto.VPNStatusResponse:
+    properties:
+      connected_users:
+        items:
+          $ref: '#/definitions/dto.ConnectedUserResponse'
+        type: array
+      timestamp:
+        example: "2025-06-14T15:08:06Z"
+        type: string
+      total_connected_users:
+        example: 5
         type: integer
     type: object
 host: localhost:8080
@@ -2038,6 +2109,35 @@ paths:
       summary: Get expiring users with full information
       tags:
       - Users
+  /api/vpn/status:
+    get:
+      description: Get detailed VPN server status including all connected users with
+        their public IPs, connection times, countries, and traffic statistics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful response with VPN status
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.VPNStatusResponse'
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing authentication
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve VPN status
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get comprehensive VPN server status
+      tags:
+      - VPN Status
   /auth/login:
     post:
       consumes:

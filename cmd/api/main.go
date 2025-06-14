@@ -126,7 +126,7 @@ func main() {
 	// NEW: Initialize bulk and search handlers
 	bulkHandler := handlers.NewBulkHandler(bulkUsecase, xmlrpcClient)
 	searchHandler := handlers.NewSearchHandler(searchUsecase)
-
+	vpnStatusHandler := handlers.NewVPNStatusHandler(xmlrpcClient)
 	// Initialize router with new handlers
 	router := httpRouter.NewRouterUpdated(
 		authHandler,
@@ -136,6 +136,7 @@ func main() {
 		searchHandler, // NEW: Advanced search handler
 		authMiddleware,
 		corsMiddleware,
+		vpnStatusHandler,
 	)
 
 	// Start server

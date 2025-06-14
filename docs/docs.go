@@ -1608,6 +1608,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/vpn/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get detailed VPN server status including all connected users with their public IPs, connection times, countries, and traffic statistics",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VPN Status"
+                ],
+                "summary": "Get comprehensive VPN server status",
+                "responses": {
+                    "200": {
+                        "description": "Successful response with VPN status",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.VPNStatusResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - invalid or missing authentication",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error - failed to retrieve VPN status",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate user and return JWT tokens",
@@ -2301,6 +2350,67 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ConnectedUserResponse": {
+            "type": "object",
+            "properties": {
+                "bytes_received": {
+                    "type": "integer",
+                    "example": 1048576
+                },
+                "bytes_sent": {
+                    "type": "integer",
+                    "example": 2097152
+                },
+                "client_id": {
+                    "type": "string",
+                    "example": "5"
+                },
+                "common_name": {
+                    "type": "string",
+                    "example": "user123"
+                },
+                "connected_since": {
+                    "type": "string",
+                    "example": "2025-06-14T14:30:25Z"
+                },
+                "connected_since_unix": {
+                    "type": "integer",
+                    "example": 1749910225
+                },
+                "connection_duration": {
+                    "type": "string",
+                    "example": "37m41s"
+                },
+                "country": {
+                    "type": "string",
+                    "example": "Vietnam"
+                },
+                "data_channel_cipher": {
+                    "type": "string",
+                    "example": "AES-256-GCM"
+                },
+                "peer_id": {
+                    "type": "string",
+                    "example": "12"
+                },
+                "real_address": {
+                    "type": "string",
+                    "example": "203.113.45.123"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "user123"
+                },
+                "virtual_address": {
+                    "type": "string",
+                    "example": "172.27.232.15"
+                },
+                "virtual_ipv6_address": {
+                    "type": "string",
+                    "example": ""
+                }
+            }
+        },
         "dto.CreateGroupRequest": {
             "type": "object",
             "required": [
@@ -2903,6 +3013,25 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SuccessResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "object",
+                    "properties": {
+                        "data": {},
+                        "message": {
+                            "type": "string",
+                            "example": "Operation successful"
+                        },
+                        "status": {
+                            "type": "integer",
+                            "example": 200
+                        }
+                    }
+                }
+            }
+        },
         "dto.UpdateGroupRequest": {
             "type": "object",
             "properties": {
@@ -3145,6 +3274,25 @@ const docTemplate = `{
                 "unfilteredTotal": {
                     "type": "integer",
                     "example": 500
+                }
+            }
+        },
+        "dto.VPNStatusResponse": {
+            "type": "object",
+            "properties": {
+                "connected_users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConnectedUserResponse"
+                    }
+                },
+                "timestamp": {
+                    "type": "string",
+                    "example": "2025-06-14T15:08:06Z"
+                },
+                "total_connected_users": {
+                    "type": "integer",
+                    "example": 5
                 }
             }
         }

@@ -12,13 +12,14 @@ import (
 )
 
 type RouterUpdated struct {
-	authHandler    *handlers.AuthHandler
-	userHandler    *handlers.UserHandler
-	groupHandler   *handlers.GroupHandler
-	bulkHandler    *handlers.BulkHandler   // NEW: Bulk operations handler
-	searchHandler  *handlers.SearchHandler // NEW: Advanced search handler
-	authMiddleware *middleware.AuthMiddleware
-	corsMiddleware *middleware.CorsMiddleware
+	authHandler      *handlers.AuthHandler
+	userHandler      *handlers.UserHandler
+	groupHandler     *handlers.GroupHandler
+	bulkHandler      *handlers.BulkHandler   // NEW: Bulk operations handler
+	searchHandler    *handlers.SearchHandler // NEW: Advanced search handler
+	authMiddleware   *middleware.AuthMiddleware
+	corsMiddleware   *middleware.CorsMiddleware
+	vpnStatusHandler *handlers.VPNStatusHandler
 }
 
 func NewRouterUpdated(
@@ -29,15 +30,17 @@ func NewRouterUpdated(
 	searchHandler *handlers.SearchHandler, // NEW: Search handler injection
 	authMiddleware *middleware.AuthMiddleware,
 	corsMiddleware *middleware.CorsMiddleware,
+	vpnStatusHandler *handlers.VPNStatusHandler,
 ) *RouterUpdated {
 	return &RouterUpdated{
-		authHandler:    authHandler,
-		userHandler:    userHandler,
-		groupHandler:   groupHandler,
-		bulkHandler:    bulkHandler,   // NEW
-		searchHandler:  searchHandler, // NEW
-		authMiddleware: authMiddleware,
-		corsMiddleware: corsMiddleware,
+		authHandler:      authHandler,
+		userHandler:      userHandler,
+		groupHandler:     groupHandler,
+		bulkHandler:      bulkHandler,   // NEW
+		searchHandler:    searchHandler, // NEW
+		authMiddleware:   authMiddleware,
+		corsMiddleware:   corsMiddleware,
+		vpnStatusHandler: vpnStatusHandler,
 	}
 }
 
@@ -189,6 +192,10 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 					saved.DELETE("/:searchId", r.searchHandler.DeleteSavedSearch)
 				}
 			}
+			vpn := api.Group("/vpn")
+			{
+				vpn.GET("/status", r.vpnStatusHandler.GetVPNStatus)
+			}
 		}
 	}
 }
@@ -289,6 +296,9 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 					"execute": "GET /api/search/saved/{id}/execute",
 					"delete":  "DELETE /api/search/saved/{id}",
 				},
+			},
+			"vpn_status": gin.H{
+				"get_status": "GET /api/vpn/status",
 			},
 		},
 		"documentation": "/swagger/index.html",
