@@ -1,8 +1,9 @@
+// internal/application/handlers/vpn_status_handler.go
 package handlers
 
 import (
 	"govpn/internal/application/dto"
-	"govpn/internal/infrastructure/xmlrpc"
+	"govpn/internal/domain/usecases"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"net/http"
@@ -11,12 +12,12 @@ import (
 )
 
 type VPNStatusHandler struct {
-	vpnStatusClient *xmlrpc.VPNStatusClient
+	vpnStatusUsecase usecases.VPNStatusUsecase
 }
 
-func NewVPNStatusHandler(xmlrpcClient *xmlrpc.Client) *VPNStatusHandler {
+func NewVPNStatusHandler(vpnStatusUsecase usecases.VPNStatusUsecase) *VPNStatusHandler {
 	return &VPNStatusHandler{
-		vpnStatusClient: xmlrpc.NewVPNStatusClient(xmlrpcClient),
+		vpnStatusUsecase: vpnStatusUsecase,
 	}
 }
 
@@ -33,17 +34,17 @@ func NewVPNStatusHandler(xmlrpcClient *xmlrpc.Client) *VPNStatusHandler {
 func (h *VPNStatusHandler) GetVPNStatus(c *gin.Context) {
 	logger.Log.Info("Getting comprehensive VPN status")
 
-	// Get VPN status từ XML-RPC
-	statusSummary, err := h.vpnStatusClient.GetVPNStatus()
+	// Business logic thông qua usecase
+	result, err := h.vpnStatusUsecase.GetVPNStatus(c.Request.Context())
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get VPN status from XML-RPC")
+		logger.Log.WithError(err).Error("Failed to get VPN status from usecase")
 		RespondWithError(c, errors.InternalServerError("Failed to retrieve VPN status", err))
 		return
 	}
 
-	// Convert entity to DTO
+	// Convert usecase result to DTO
 	var connectedUsers []dto.ConnectedUserResponse
-	for _, user := range statusSummary.ConnectedUsers {
+	for _, user := range result.ConnectedUsers {
 		connectedUsers = append(connectedUsers, dto.ConnectedUserResponse{
 			CommonName:         user.CommonName,
 			RealAddress:        user.RealAddress,
@@ -63,12 +64,12 @@ func (h *VPNStatusHandler) GetVPNStatus(c *gin.Context) {
 	}
 
 	response := dto.VPNStatusResponse{
-		TotalConnectedUsers: statusSummary.TotalConnectedUsers,
+		TotalConnectedUsers: result.TotalConnectedUsers,
 		ConnectedUsers:      connectedUsers,
-		Timestamp:           statusSummary.Timestamp,
+		Timestamp:           result.Timestamp,
 	}
 
-	logger.Log.WithField("total_users", statusSummary.TotalConnectedUsers).
+	logger.Log.WithField("total_users", result.TotalConnectedUsers).
 		Info("VPN status retrieved successfully")
 
 	RespondWithSuccess(c, http.StatusOK, response)

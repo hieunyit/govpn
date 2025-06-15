@@ -114,7 +114,6 @@ func (c *VPNStatusClient) parseVPNStatusResponse(body []byte) (*entities.VPNStat
 		if !strings.HasPrefix(serverMember.Name, "openvpn_") {
 			continue
 		}
-		fmt.Printf("Processing server: %s\n", serverMember.Name)
 		users := c.extractUsersFromServer(serverMember)
 		for _, user := range users {
 			user.Country = c.getCountryFromIP(user.RealAddress)
@@ -124,14 +123,12 @@ func (c *VPNStatusClient) parseVPNStatusResponse(body []byte) (*entities.VPNStat
 	}
 
 	summary.TotalConnectedUsers = len(summary.ConnectedUsers)
-	fmt.Printf("Total connected users: %d\n", summary.TotalConnectedUsers)
 	return summary, nil
 }
 
 func (c *VPNStatusClient) extractUsersFromServer(serverMember VPNServerMember) []*entities.ConnectedUser {
 	for _, dataMember := range serverMember.Value.Struct.Members {
 		if dataMember.Name == "client_list" {
-			fmt.Printf("Found client_list in server\n")
 			return c.parseClientListArray(dataMember.Value.Array)
 		}
 	}
@@ -140,16 +137,12 @@ func (c *VPNStatusClient) extractUsersFromServer(serverMember VPNServerMember) [
 
 func (c *VPNStatusClient) parseClientListArray(clientArray ClientListArray) []*entities.ConnectedUser {
 	var users []*entities.ConnectedUser
-	fmt.Printf("Client array has %d entries\n", len(clientArray.Data))
-	for i, entry := range clientArray.Data {
-		fmt.Printf("Processing client entry %d: got %d values\n", i, len(entry.Values))
+	for _, entry := range clientArray.Data {
 		if len(entry.Values) < 12 {
-			fmt.Printf("  Skip: need 12 values, got %d\n", len(entry.Values))
 			continue
 		}
 		if user := c.createUserFromValues(entry.Values); user != nil {
 			users = append(users, user)
-			fmt.Printf("Created user: %s from %s\n", user.Username, user.RealAddress)
 		}
 	}
 	return users

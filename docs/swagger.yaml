@@ -314,6 +314,23 @@ definitions:
         example: 10
         type: integer
     type: object
+  dto.BulkDisconnectUsersRequest:
+    properties:
+      message:
+        example: Maintenance disconnect
+        maxLength: 200
+        type: string
+      usernames:
+        example:
+        - '["testuser1"'
+        - ' "testuser2"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - usernames
+    type: object
   dto.BulkGroupActionResponse:
     properties:
       failed:
@@ -525,6 +542,47 @@ definitions:
     - macAddresses
     - userExpiration
     - username
+    type: object
+  dto.DisconnectResponse:
+    properties:
+      connection_info:
+        $ref: '#/definitions/dto.UserConnectionInfo'
+      count:
+        example: 2
+        type: integer
+      disconnected_users:
+        example:
+        - '["testuser1"'
+        - ' "testuser2"]'
+        items:
+          type: string
+        type: array
+      message:
+        example: Users disconnected successfully
+        type: string
+      skipped_users:
+        example:
+        - '["offline_user"]'
+        items:
+          type: string
+        type: array
+      success:
+        example: true
+        type: boolean
+      total_requested:
+        example: 3
+        type: integer
+      validation_errors:
+        items:
+          $ref: '#/definitions/dto.UserValidationError'
+        type: array
+    type: object
+  dto.DisconnectUserRequest:
+    properties:
+      message:
+        example: Session terminated by administrator
+        maxLength: 200
+        type: string
     type: object
   dto.EnhancedGroupResponse:
     properties:
@@ -935,6 +993,24 @@ definitions:
         example: 31/12/2025
         type: string
     type: object
+  dto.UserConnectionInfo:
+    properties:
+      connected_since:
+        example: "2025-06-14T14:30:25Z"
+        type: string
+      country:
+        example: Vietnam
+        type: string
+      real_address:
+        example: 203.113.45.123
+        type: string
+      username:
+        example: testuser1
+        type: string
+      virtual_address:
+        example: 172.27.232.15
+        type: string
+    type: object
   dto.UserExpirationInfo:
     properties:
       accessControl:
@@ -1068,6 +1144,15 @@ definitions:
       unfilteredTotal:
         example: 500
         type: integer
+    type: object
+  dto.UserValidationError:
+    properties:
+      error:
+        example: User is not currently connected
+        type: string
+      username:
+        example: testuser1
+        type: string
     type: object
   dto.VPNStatusResponse:
     properties:
@@ -1278,6 +1363,48 @@ paths:
       security:
       - BearerAuth: []
       summary: Bulk create users
+      tags:
+      - Bulk Operations
+  /api/bulk/users/disconnect:
+    post:
+      consumes:
+      - application/json
+      description: Disconnect multiple users from VPN with business logic validation
+        (user exists and is connected)
+      parameters:
+      - description: Bulk disconnect users request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BulkDisconnectUsersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Users disconnected successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.DisconnectResponse'
+              type: object
+        "400":
+          description: Bad request - validation error or no valid users
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing authentication
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal server error - failed to disconnect users
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk disconnect multiple VPN users
       tags:
       - Bulk Operations
   /api/bulk/users/extend:
@@ -2076,6 +2203,57 @@ paths:
       security:
       - BearerAuth: []
       summary: Perform user action
+      tags:
+      - Users
+  /api/users/{username}/disconnect:
+    post:
+      consumes:
+      - application/json
+      description: Disconnect a specific user from VPN with business logic validation
+        (user exists and is connected)
+      parameters:
+      - description: Username to disconnect
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Disconnect user request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.DisconnectUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User disconnected successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.DisconnectResponse'
+              type: object
+        "400":
+          description: Bad request - user not found or not connected
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing authentication
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: User not found in system
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal server error - failed to disconnect user
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Disconnect a single VPN user
       tags:
       - Users
   /api/users/expirations:

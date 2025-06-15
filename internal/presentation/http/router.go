@@ -12,14 +12,15 @@ import (
 )
 
 type RouterUpdated struct {
-	authHandler      *handlers.AuthHandler
-	userHandler      *handlers.UserHandler
-	groupHandler     *handlers.GroupHandler
-	bulkHandler      *handlers.BulkHandler   // NEW: Bulk operations handler
-	searchHandler    *handlers.SearchHandler // NEW: Advanced search handler
-	authMiddleware   *middleware.AuthMiddleware
-	corsMiddleware   *middleware.CorsMiddleware
-	vpnStatusHandler *handlers.VPNStatusHandler
+	authHandler       *handlers.AuthHandler
+	userHandler       *handlers.UserHandler
+	groupHandler      *handlers.GroupHandler
+	bulkHandler       *handlers.BulkHandler   // NEW: Bulk operations handler
+	searchHandler     *handlers.SearchHandler // NEW: Advanced search handler
+	authMiddleware    *middleware.AuthMiddleware
+	corsMiddleware    *middleware.CorsMiddleware
+	vpnStatusHandler  *handlers.VPNStatusHandler
+	disconnectHandler *handlers.DisconnectHandler
 }
 
 func NewRouterUpdated(
@@ -31,16 +32,18 @@ func NewRouterUpdated(
 	authMiddleware *middleware.AuthMiddleware,
 	corsMiddleware *middleware.CorsMiddleware,
 	vpnStatusHandler *handlers.VPNStatusHandler,
+	disconnectHandler *handlers.DisconnectHandler,
 ) *RouterUpdated {
 	return &RouterUpdated{
-		authHandler:      authHandler,
-		userHandler:      userHandler,
-		groupHandler:     groupHandler,
-		bulkHandler:      bulkHandler,   // NEW
-		searchHandler:    searchHandler, // NEW
-		authMiddleware:   authMiddleware,
-		corsMiddleware:   corsMiddleware,
-		vpnStatusHandler: vpnStatusHandler,
+		authHandler:       authHandler,
+		userHandler:       userHandler,
+		groupHandler:      groupHandler,
+		bulkHandler:       bulkHandler,   // NEW
+		searchHandler:     searchHandler, // NEW
+		authMiddleware:    authMiddleware,
+		corsMiddleware:    corsMiddleware,
+		vpnStatusHandler:  vpnStatusHandler,
+		disconnectHandler: disconnectHandler,
 	}
 }
 
@@ -122,6 +125,7 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 				users.PUT("/:username", r.userHandler.UpdateUser)
 				users.DELETE("/:username", r.userHandler.DeleteUser)
 				users.PUT("/:username/:action", r.userHandler.UserAction)
+				users.POST("/:username/disconnect", r.disconnectHandler.DisconnectUser)
 			}
 
 			// =================== EXISTING GROUP ROUTES ===================
@@ -152,6 +156,7 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 					userBulk.POST("/extend", r.bulkHandler.BulkExtendUsers)
 					userBulk.POST("/import", r.bulkHandler.ImportUsers)
 					userBulk.GET("/template", r.bulkHandler.ExportUserTemplate)
+					userBulk.POST("/disconnect", r.disconnectHandler.BulkDisconnectUsers)
 				}
 
 				// Group bulk operations
@@ -257,6 +262,7 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 				"delete":      "DELETE /api/users/{username}",
 				"action":      "PUT /api/users/{username}/{action}",
 				"expirations": "GET /api/users/expirations",
+				"disconnect":  "POST /api/users/{username}/disconnect",
 			},
 			"groups": gin.H{
 				"create": "POST /api/groups",
@@ -269,11 +275,12 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 			// NEW: Bulk operations endpoints
 			"bulk_operations": gin.H{
 				"users": gin.H{
-					"bulk_create":  "POST /api/bulk/users/create",
-					"bulk_actions": "POST /api/bulk/users/actions",
-					"bulk_extend":  "POST /api/bulk/users/extend",
-					"import":       "POST /api/bulk/users/import",
-					"template":     "GET /api/bulk/users/template",
+					"bulk_create":     "POST /api/bulk/users/create",
+					"bulk_actions":    "POST /api/bulk/users/actions",
+					"bulk_extend":     "POST /api/bulk/users/extend",
+					"import":          "POST /api/bulk/users/import",
+					"template":        "GET /api/bulk/users/template",
+					"bulk_disconnect": "POST /api/bulk/users/disconnect",
 				},
 				"groups": gin.H{
 					"bulk_create":  "POST /api/bulk/groups/create",

@@ -314,6 +314,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/bulk/users/disconnect": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Disconnect multiple users from VPN with business logic validation (user exists and is connected)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bulk Operations"
+                ],
+                "summary": "Bulk disconnect multiple VPN users",
+                "parameters": [
+                    {
+                        "description": "Bulk disconnect users request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.BulkDisconnectUsersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Users disconnected successfully",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.DisconnectResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - validation error or no valid users",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - invalid or missing authentication",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error - failed to disconnect users",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/bulk/users/extend": {
             "post": {
                 "security": [
@@ -1544,6 +1613,88 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/users/{username}/disconnect": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Disconnect a specific user from VPN with business logic validation (user exists and is connected)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Disconnect a single VPN user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username to disconnect",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Disconnect user request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.DisconnectUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User disconnected successfully",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.DisconnectResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - user not found or not connected",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - invalid or missing authentication",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found in system",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error - failed to disconnect user",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/users/{username}/{action}": {
             "put": {
                 "security": [
@@ -2203,6 +2354,30 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.BulkDisconnectUsersRequest": {
+            "type": "object",
+            "required": [
+                "usernames"
+            ],
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "example": "Maintenance disconnect"
+                },
+                "usernames": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"testuser1\"",
+                        " \"testuser2\"]"
+                    ]
+                }
+            }
+        },
         "dto.BulkGroupActionResponse": {
             "type": "object",
             "properties": {
@@ -2495,6 +2670,65 @@ const docTemplate = `{
                     "maxLength": 30,
                     "minLength": 3,
                     "example": "testuser"
+                }
+            }
+        },
+        "dto.DisconnectResponse": {
+            "type": "object",
+            "properties": {
+                "connection_info": {
+                    "$ref": "#/definitions/dto.UserConnectionInfo"
+                },
+                "count": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "disconnected_users": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"testuser1\"",
+                        " \"testuser2\"]"
+                    ]
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Users disconnected successfully"
+                },
+                "skipped_users": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"offline_user\"]"
+                    ]
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "total_requested": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "validation_errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.UserValidationError"
+                    }
+                }
+            }
+        },
+        "dto.DisconnectUserRequest": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "example": "Session terminated by administrator"
                 }
             }
         },
@@ -3081,6 +3315,31 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UserConnectionInfo": {
+            "type": "object",
+            "properties": {
+                "connected_since": {
+                    "type": "string",
+                    "example": "2025-06-14T14:30:25Z"
+                },
+                "country": {
+                    "type": "string",
+                    "example": "Vietnam"
+                },
+                "real_address": {
+                    "type": "string",
+                    "example": "203.113.45.123"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "testuser1"
+                },
+                "virtual_address": {
+                    "type": "string",
+                    "example": "172.27.232.15"
+                }
+            }
+        },
         "dto.UserExpirationInfo": {
             "type": "object",
             "properties": {
@@ -3274,6 +3533,19 @@ const docTemplate = `{
                 "unfilteredTotal": {
                     "type": "integer",
                     "example": 500
+                }
+            }
+        },
+        "dto.UserValidationError": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "User is not currently connected"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "testuser1"
                 }
             }
         },
