@@ -21,6 +21,7 @@ type RouterUpdated struct {
 	corsMiddleware    *middleware.CorsMiddleware
 	vpnStatusHandler  *handlers.VPNStatusHandler
 	disconnectHandler *handlers.DisconnectHandler
+	configHandler     *handlers.ConfigHandler
 }
 
 func NewRouterUpdated(
@@ -33,6 +34,8 @@ func NewRouterUpdated(
 	corsMiddleware *middleware.CorsMiddleware,
 	vpnStatusHandler *handlers.VPNStatusHandler,
 	disconnectHandler *handlers.DisconnectHandler,
+	configHandler *handlers.ConfigHandler, // NEW: Config handler injection
+
 ) *RouterUpdated {
 	return &RouterUpdated{
 		authHandler:       authHandler,
@@ -44,6 +47,7 @@ func NewRouterUpdated(
 		corsMiddleware:    corsMiddleware,
 		vpnStatusHandler:  vpnStatusHandler,
 		disconnectHandler: disconnectHandler,
+		configHandler:     configHandler, // NEW
 	}
 }
 
@@ -201,6 +205,14 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 			{
 				vpn.GET("/status", r.vpnStatusHandler.GetVPNStatus)
 			}
+			config := api.Group("/config")
+			{
+				server := config.Group("/server")
+				{
+					server.GET("/info", r.configHandler.GetServerInfo)
+				}
+				config.GET("/network", r.configHandler.GetNetworkConfig)
+			}
 		}
 	}
 }
@@ -306,6 +318,10 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 			},
 			"vpn_status": gin.H{
 				"get_status": "GET /api/vpn/status",
+			},
+			"config": gin.H{
+				"server_info":  "GET /api/config/server/info",
+				"network_info": "GET /api/config/network",
 			},
 		},
 		"documentation": "/swagger/index.html",

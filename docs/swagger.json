@@ -532,6 +532,104 @@
                 }
             }
         },
+        "/api/config/network": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get comprehensive network configuration including client networks, VPN daemon settings, routing, and NAT configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Get network configuration",
+                "responses": {
+                    "200": {
+                        "description": "Network configuration retrieved successfully",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.NetworkConfigResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - invalid or missing authentication",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error - failed to retrieve network config",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/config/server/info": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get basic server information including node type, ports, and cluster configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Get server information",
+                "responses": {
+                    "200": {
+                        "description": "Server information retrieved successfully",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.ServerInfoResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - invalid or missing authentication",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error - failed to retrieve server info",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/groups": {
             "get": {
                 "security": [
@@ -3034,6 +3132,110 @@
                 }
             }
         },
+        "dto.NetworkConfigResponse": {
+            "type": "object",
+            "properties": {
+                "allow_private_nets6_to_clients": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "allow_private_nets_to_clients": {
+                    "description": "Advanced Network Settings",
+                    "type": "boolean",
+                    "example": true
+                },
+                "client_netmask_bits": {
+                    "type": "string",
+                    "example": "20"
+                },
+                "client_network": {
+                    "description": "Client Network Settings",
+                    "type": "string",
+                    "example": "172.27.224.0"
+                },
+                "group_pool": {
+                    "type": "string",
+                    "example": "172.27.240.0/20"
+                },
+                "inter_client": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "listen_ip": {
+                    "type": "string",
+                    "example": "all"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Network config retrieved successfully"
+                },
+                "mss_fix": {
+                    "type": "string",
+                    "example": "1350"
+                },
+                "mtu": {
+                    "description": "Network Performance",
+                    "type": "string",
+                    "example": "1420"
+                },
+                "nat6_enabled": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "nat6_masquerade": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "nat_enabled": {
+                    "description": "NAT Settings",
+                    "type": "boolean",
+                    "example": true
+                },
+                "nat_masquerade": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "osi_layer": {
+                    "type": "string",
+                    "example": "3"
+                },
+                "private_access": {
+                    "type": "string",
+                    "example": "no"
+                },
+                "protocol": {
+                    "type": "string",
+                    "example": "tcp"
+                },
+                "reroute_dns": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "reroute_gateway": {
+                    "description": "Routing Settings",
+                    "type": "boolean",
+                    "example": true
+                },
+                "server_ip": {
+                    "type": "string",
+                    "example": "all"
+                },
+                "status": {
+                    "description": "Status",
+                    "type": "string",
+                    "example": "optimal"
+                },
+                "tcp_port": {
+                    "description": "VPN Daemon Settings",
+                    "type": "string",
+                    "example": "443"
+                },
+                "udp_port": {
+                    "type": "string",
+                    "example": "1194"
+                }
+            }
+        },
         "dto.RefreshTokenRequest": {
             "type": "object",
             "required": [
@@ -3238,6 +3440,55 @@
                 "total": {
                     "type": "integer",
                     "example": 5
+                }
+            }
+        },
+        "dto.ServerInfoResponse": {
+            "type": "object",
+            "properties": {
+                "admin_ip_address": {
+                    "type": "string",
+                    "example": "all"
+                },
+                "admin_port": {
+                    "type": "string",
+                    "example": "943"
+                },
+                "client_ip_address": {
+                    "type": "string",
+                    "example": "all"
+                },
+                "client_port": {
+                    "type": "string",
+                    "example": "943"
+                },
+                "cluster_mode": {
+                    "type": "string",
+                    "example": "False"
+                },
+                "failover_mode": {
+                    "type": "string",
+                    "example": "none"
+                },
+                "license_server": {
+                    "type": "string",
+                    "example": "licensing.openvpn.net:443"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Server info retrieved successfully"
+                },
+                "node_type": {
+                    "type": "string",
+                    "example": "PRIMARY"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "healthy"
+                },
+                "web_server_name": {
+                    "type": "string",
+                    "example": "OpenVPN-AS"
                 }
             }
         },

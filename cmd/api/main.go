@@ -106,6 +106,7 @@ func main() {
 	groupRepo := repositories.NewGroupRepository(xmlrpcClient)
 	disconnectRepo := repositories.NewDisconnectRepository(xmlrpcClient)
 	vpnStatusRepo := repositories.NewVPNStatusRepository(xmlrpcClient)
+	configRepo := repositories.NewConfigRepository(xmlrpcClient)
 
 	// Initialize use cases with shared JWT service
 	authUsecase := usecases.NewAuthUsecaseWithJWTService(userRepo, ldapClient, jwtService)
@@ -113,6 +114,7 @@ func main() {
 	groupUsecase := usecases.NewGroupUsecase(groupRepo)
 	disconnectUsecase := usecases.NewDisconnectUsecase(userRepo, disconnectRepo, vpnStatusRepo)
 	vpnStatusUsecase := usecases.NewVPNStatusUsecase(vpnStatusRepo)
+	configUsecase := usecases.NewConfigUsecase(configRepo)
 	// NEW: Initialize bulk and search use cases
 	bulkUsecase := usecases.NewBulkUsecase(userRepo, groupRepo, ldapClient)
 	searchUsecase := usecases.NewSearchUsecase(userRepo, groupRepo)
@@ -131,6 +133,7 @@ func main() {
 	searchHandler := handlers.NewSearchHandler(searchUsecase)
 	vpnStatusHandler := handlers.NewVPNStatusHandler(vpnStatusUsecase)
 	disconnectHandler := handlers.NewDisconnectHandler(disconnectUsecase)
+	configHandler := handlers.NewConfigHandler(configUsecase)
 	// Initialize router with new handlers
 	router := httpRouter.NewRouterUpdated(
 		authHandler,
@@ -142,6 +145,7 @@ func main() {
 		corsMiddleware,
 		vpnStatusHandler,
 		disconnectHandler,
+		configHandler,
 	)
 
 	// Start server

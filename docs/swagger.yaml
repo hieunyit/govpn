@@ -798,6 +798,85 @@ definitions:
             type: integer
         type: object
     type: object
+  dto.NetworkConfigResponse:
+    properties:
+      allow_private_nets_to_clients:
+        description: Advanced Network Settings
+        example: true
+        type: boolean
+      allow_private_nets6_to_clients:
+        example: true
+        type: boolean
+      client_netmask_bits:
+        example: "20"
+        type: string
+      client_network:
+        description: Client Network Settings
+        example: 172.27.224.0
+        type: string
+      group_pool:
+        example: 172.27.240.0/20
+        type: string
+      inter_client:
+        example: false
+        type: boolean
+      listen_ip:
+        example: all
+        type: string
+      message:
+        example: Network config retrieved successfully
+        type: string
+      mss_fix:
+        example: "1350"
+        type: string
+      mtu:
+        description: Network Performance
+        example: "1420"
+        type: string
+      nat_enabled:
+        description: NAT Settings
+        example: true
+        type: boolean
+      nat_masquerade:
+        example: false
+        type: boolean
+      nat6_enabled:
+        example: true
+        type: boolean
+      nat6_masquerade:
+        example: false
+        type: boolean
+      osi_layer:
+        example: "3"
+        type: string
+      private_access:
+        example: "no"
+        type: string
+      protocol:
+        example: tcp
+        type: string
+      reroute_dns:
+        example: true
+        type: boolean
+      reroute_gateway:
+        description: Routing Settings
+        example: true
+        type: boolean
+      server_ip:
+        example: all
+        type: string
+      status:
+        description: Status
+        example: optimal
+        type: string
+      tcp_port:
+        description: VPN Daemon Settings
+        example: "443"
+        type: string
+      udp_port:
+        example: "1194"
+        type: string
+    type: object
   dto.RefreshTokenRequest:
     properties:
       refreshToken:
@@ -946,6 +1025,42 @@ definitions:
       total:
         example: 5
         type: integer
+    type: object
+  dto.ServerInfoResponse:
+    properties:
+      admin_ip_address:
+        example: all
+        type: string
+      admin_port:
+        example: "943"
+        type: string
+      client_ip_address:
+        example: all
+        type: string
+      client_port:
+        example: "943"
+        type: string
+      cluster_mode:
+        example: "False"
+        type: string
+      failover_mode:
+        example: none
+        type: string
+      license_server:
+        example: licensing.openvpn.net:443
+        type: string
+      message:
+        example: Server info retrieved successfully
+        type: string
+      node_type:
+        example: PRIMARY
+        type: string
+      status:
+        example: healthy
+        type: string
+      web_server_name:
+        example: OpenVPN-AS
+        type: string
     type: object
   dto.SuccessResponse:
     properties:
@@ -1506,6 +1621,64 @@ paths:
       summary: Export user template
       tags:
       - Bulk Operations
+  /api/config/network:
+    get:
+      description: Get comprehensive network configuration including client networks,
+        VPN daemon settings, routing, and NAT configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Network configuration retrieved successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.NetworkConfigResponse'
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing authentication
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve network config
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get network configuration
+      tags:
+      - Configuration
+  /api/config/server/info:
+    get:
+      description: Get basic server information including node type, ports, and cluster
+        configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Server information retrieved successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ServerInfoResponse'
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing authentication
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve server info
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get server information
+      tags:
+      - Configuration
   /api/groups:
     get:
       description: Get a paginated list of groups with filtering
