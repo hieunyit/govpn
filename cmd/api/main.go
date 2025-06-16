@@ -111,7 +111,7 @@ func main() {
 	// Initialize use cases with shared JWT service
 	authUsecase := usecases.NewAuthUsecaseWithJWTService(userRepo, ldapClient, jwtService)
 	userUsecase := usecases.NewUserUsecase(userRepo, groupRepo, ldapClient)
-	groupUsecase := usecases.NewGroupUsecase(groupRepo)
+	groupUsecase := usecases.NewGroupUsecase(groupRepo, configRepo)
 	disconnectUsecase := usecases.NewDisconnectUsecase(userRepo, disconnectRepo, vpnStatusRepo)
 	vpnStatusUsecase := usecases.NewVPNStatusUsecase(vpnStatusRepo)
 	configUsecase := usecases.NewConfigUsecase(configRepo)
@@ -126,7 +126,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)
 	userHandler := handlers.NewUserHandler(userUsecase, xmlrpcClient)
-	groupHandler := handlers.NewGroupHandler(groupUsecase, xmlrpcClient)
+	groupHandler := handlers.NewGroupHandler(groupUsecase, configUsecase, xmlrpcClient)
 
 	// NEW: Initialize bulk and search handlers
 	bulkHandler := handlers.NewBulkHandler(bulkUsecase, xmlrpcClient)

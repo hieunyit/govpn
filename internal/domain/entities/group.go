@@ -7,6 +7,8 @@ type Group struct {
 	Role          string   `json:"role"`
 	DenyAccess    string   `json:"denyAccess"`
 	AccessControl []string `json:"accessControl"`
+	GroupSubnet   []string `json:"groupSubnet"`
+	GroupRange    []string `json:"groupRange"`
 }
 
 type GroupFilter struct {
@@ -43,12 +45,22 @@ func (g *Group) HasAccessControl() bool {
 	return len(g.AccessControl) > 0
 }
 
+func (g *Group) HasGroupSubnet() bool {
+	return len(g.GroupSubnet) > 0
+}
+
+func (g *Group) HasGroupRange() bool {
+	return len(g.GroupRange) > 0
+}
+
 func NewGroup(groupName, authMethod string) *Group {
 	return &Group{
-		GroupName:  groupName,
-		AuthMethod: authMethod,
-		Role:       UserRoleUser,
-		DenyAccess: "false",
-		MFA:        "true",
+		GroupName:   groupName,
+		AuthMethod:  authMethod,
+		Role:        UserRoleUser,
+		DenyAccess:  "false",
+		MFA:         "true",
+		GroupSubnet: []string{},
+		GroupRange:  []string{},
 	}
 }

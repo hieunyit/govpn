@@ -26,6 +26,23 @@ func NewGroupRepository(client *xmlrpc.Client) repositories.GroupRepository {
 func (r *groupRepositoryImpl) Create(ctx context.Context, group *entities.Group) error {
 	logger.Log.WithField("groupName", group.GroupName).Info("Creating group")
 
+	// Set default values if not provided
+	if group.MFA == "" {
+		group.MFA = "true"
+	}
+	if group.Role == "" {
+		group.Role = entities.UserRoleUser
+	}
+	if group.DenyAccess == "" {
+		group.DenyAccess = "false"
+	}
+	if group.GroupSubnet == nil {
+		group.GroupSubnet = []string{}
+	}
+	if group.GroupRange == nil {
+		group.GroupRange = []string{}
+	}
+
 	err := r.groupClient.CreateGroup(group)
 	if err != nil {
 		logger.Log.WithField("groupName", group.GroupName).WithError(err).Error("Failed to create group")
@@ -48,21 +65,22 @@ func (r *groupRepositoryImpl) GetByName(ctx context.Context, groupName string) (
 	return group, nil
 }
 
-func (r *groupRepositoryImpl) GroupPropDel(ctx context.Context, group *entities.Group) error {
-	logger.Log.WithField("grouname", group.GroupName).Info("GrouopPropDel user")
-
-	err := r.groupClient.GroupPropDel(group)
-	if err != nil {
-		logger.Log.WithField("grouname", group.GroupName).WithError(err).Error("Failed to UserPropDel user")
-		return fmt.Errorf("failed to UserPropDel user: %w", err)
-	}
-
-	logger.Log.WithField("grouname", group.GroupName).Info("User updated successfully")
-	return nil
-}
-
 func (r *groupRepositoryImpl) Update(ctx context.Context, group *entities.Group) error {
 	logger.Log.WithField("groupName", group.GroupName).Info("Updating group")
+
+	// Ensure default values
+	if group.MFA == "" {
+		group.MFA = "true"
+	}
+	if group.Role == "" {
+		group.Role = entities.UserRoleUser
+	}
+	if group.GroupSubnet == nil {
+		group.GroupSubnet = []string{}
+	}
+	if group.GroupRange == nil {
+		group.GroupRange = []string{}
+	}
 
 	err := r.groupClient.UpdateGroup(group)
 	if err != nil {
@@ -90,7 +108,6 @@ func (r *groupRepositoryImpl) Delete(ctx context.Context, groupName string) erro
 func (r *groupRepositoryImpl) List(ctx context.Context, filter *entities.GroupFilter) ([]*entities.Group, error) {
 	logger.Log.Debug("Listing groups")
 
-	// Get all groups from OpenVPN AS
 	groups, err := r.groupClient.GetAllGroups()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get all groups")
@@ -98,58 +115,17 @@ func (r *groupRepositoryImpl) List(ctx context.Context, filter *entities.GroupFi
 	}
 
 	// Apply filters
-	filteredGroups := make([]*entities.Group, 0)
-	for _, group := range groups {
-		if r.matchesFilter(group, filter) {
-			filteredGroups = append(filteredGroups, group)
-		}
-	}
+	filteredGroups := r.applyFilters(groups, filter)
 
-	// ✅ FIX: Apply pagination with proper offset calculation
-	if filter.Limit > 0 {
-		// Calculate offset from page if not provided
-		offset := filter.Offset
-		if offset == 0 && filter.Page > 1 {
-			offset = (filter.Page - 1) * filter.Limit
-		}
+	// Apply pagination
+	paginatedGroups := r.applyPagination(filteredGroups, filter)
 
-		start := offset
-		end := start + filter.Limit
+	logger.Log.WithField("totalGroups", len(groups)).
+		WithField("filteredGroups", len(filteredGroups)).
+		WithField("paginatedGroups", len(paginatedGroups)).
+		Debug("Groups listed successfully")
 
-		if start > len(filteredGroups) {
-			return []*entities.Group{}, nil
-		}
-
-		if end > len(filteredGroups) {
-			end = len(filteredGroups)
-		}
-
-		result := filteredGroups[start:end]
-		logger.Log.WithField("total", len(filteredGroups)).
-			WithField("returned", len(result)).
-			WithField("page", filter.Page).
-			WithField("offset", offset).
-			Info("Groups listed successfully")
-
-		return result, nil
-	}
-
-	// If no pagination, return all filtered results
-	logger.Log.WithField("total", len(filteredGroups)).Info("All filtered groups returned")
-	return filteredGroups, nil
-}
-
-func (r *groupRepositoryImpl) matchesFilter(group *entities.Group, filter *entities.GroupFilter) bool {
-	if filter.GroupName != "" && !strings.Contains(strings.ToLower(group.GroupName), strings.ToLower(filter.GroupName)) {
-		return false
-	}
-	if filter.AuthMethod != "" && group.AuthMethod != filter.AuthMethod {
-		return false
-	}
-	if filter.Role != "" && group.Role != filter.Role {
-		return false
-	}
-	return true
+	return paginatedGroups, nil
 }
 
 func (r *groupRepositoryImpl) ExistsByName(ctx context.Context, groupName string) (bool, error) {
@@ -157,7 +133,10 @@ func (r *groupRepositoryImpl) ExistsByName(ctx context.Context, groupName string
 
 	_, err := r.groupClient.GetGroup(groupName)
 	if err != nil {
-		return false, nil
+		if strings.Contains(err.Error(), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check group existence: %w", err)
 	}
 
 	return true, nil
@@ -166,7 +145,17 @@ func (r *groupRepositoryImpl) ExistsByName(ctx context.Context, groupName string
 func (r *groupRepositoryImpl) Enable(ctx context.Context, groupName string) error {
 	logger.Log.WithField("groupName", groupName).Info("Enabling group")
 
-	err := r.groupClient.EnableGroup(groupName)
+	// Get existing group
+	group, err := r.GetByName(ctx, groupName)
+	if err != nil {
+		return err
+	}
+
+	// Set deny access to false
+	group.SetDenyAccess(false)
+
+	// Update group
+	err = r.Update(ctx, group)
 	if err != nil {
 		logger.Log.WithField("groupName", groupName).WithError(err).Error("Failed to enable group")
 		return fmt.Errorf("failed to enable group: %w", err)
@@ -179,7 +168,17 @@ func (r *groupRepositoryImpl) Enable(ctx context.Context, groupName string) erro
 func (r *groupRepositoryImpl) Disable(ctx context.Context, groupName string) error {
 	logger.Log.WithField("groupName", groupName).Info("Disabling group")
 
-	err := r.groupClient.DisableGroup(groupName)
+	// Get existing group
+	group, err := r.GetByName(ctx, groupName)
+	if err != nil {
+		return err
+	}
+
+	// Set deny access to true
+	group.SetDenyAccess(true)
+
+	// Update group
+	err = r.Update(ctx, group)
 	if err != nil {
 		logger.Log.WithField("groupName", groupName).WithError(err).Error("Failed to disable group")
 		return fmt.Errorf("failed to disable group: %w", err)
@@ -188,7 +187,6 @@ func (r *groupRepositoryImpl) Disable(ctx context.Context, groupName string) err
 	logger.Log.WithField("groupName", groupName).Info("Group disabled successfully")
 	return nil
 }
-
 func (r *groupRepositoryImpl) ClearAccessControl(ctx context.Context, group *entities.Group) error {
 	logger.Log.WithField("groupName", group.GroupName).Info("Clearing group access control")
 
@@ -200,4 +198,63 @@ func (r *groupRepositoryImpl) ClearAccessControl(ctx context.Context, group *ent
 
 	logger.Log.WithField("groupName", group.GroupName).Info("Group access control cleared successfully")
 	return nil
+}
+func (r *groupRepositoryImpl) GroupPropDel(ctx context.Context, group *entities.Group) error {
+	logger.Log.WithField("groupName", group.GroupName).Info("GroupPropDel group")
+
+	err := r.groupClient.GroupPropDel(group)
+	if err != nil {
+		logger.Log.WithField("groupName", group.GroupName).WithError(err).Error("Failed to GroupPropDel group")
+		return fmt.Errorf("failed to GroupPropDel group: %w", err)
+	}
+
+	logger.Log.WithField("groupName", group.GroupName).Info("Group properties deleted successfully")
+	return nil
+}
+
+// Helper functions
+func (r *groupRepositoryImpl) applyFilters(groups []*entities.Group, filter *entities.GroupFilter) []*entities.Group {
+	if filter == nil {
+		return groups
+	}
+
+	var filtered []*entities.Group
+	for _, group := range groups {
+		// Apply group name filter
+		if filter.GroupName != "" && !strings.Contains(strings.ToLower(group.GroupName), strings.ToLower(filter.GroupName)) {
+			continue
+		}
+
+		// Apply auth method filter
+		if filter.AuthMethod != "" && !strings.EqualFold(group.AuthMethod, filter.AuthMethod) {
+			continue
+		}
+
+		// Apply role filter
+		if filter.Role != "" && !strings.EqualFold(group.Role, filter.Role) {
+			continue
+		}
+
+		filtered = append(filtered, group)
+	}
+
+	return filtered
+}
+
+func (r *groupRepositoryImpl) applyPagination(groups []*entities.Group, filter *entities.GroupFilter) []*entities.Group {
+	if filter == nil || filter.Limit <= 0 {
+		return groups
+	}
+
+	start := filter.Offset
+	if start >= len(groups) {
+		return []*entities.Group{}
+	}
+
+	end := start + filter.Limit
+	if end > len(groups) {
+		end = len(groups)
+	}
+
+	return groups[start:end]
 }

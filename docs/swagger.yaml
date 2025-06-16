@@ -495,6 +495,21 @@ definitions:
         maxLength: 50
         minLength: 3
         type: string
+      groupRange:
+        items:
+          type: string
+        type: array
+      groupSubnet:
+        items:
+          type: string
+        type: array
+      mfa:
+        type: boolean
+      role:
+        enum:
+        - User
+        - Admin
+        type: string
     required:
     - authMethod
     - groupName
@@ -599,6 +614,14 @@ definitions:
         type: boolean
       groupName:
         type: string
+      groupRange:
+        items:
+          type: string
+        type: array
+      groupSubnet:
+        items:
+          type: string
+        type: array
       lastModified:
         example: "2024-03-10T14:22:00Z"
         type: string
@@ -668,6 +691,14 @@ definitions:
         type: boolean
       groupName:
         type: string
+      groupRange:
+        items:
+          type: string
+        type: array
+      groupSubnet:
+        items:
+          type: string
+        type: array
       mfa:
         type: boolean
       role:
@@ -1083,6 +1114,21 @@ definitions:
         type: array
       denyAccess:
         type: boolean
+      groupRange:
+        items:
+          type: string
+        type: array
+      groupSubnet:
+        items:
+          type: string
+        type: array
+      mfa:
+        type: boolean
+      role:
+        enum:
+        - User
+        - Admin
+        type: string
     type: object
   dto.UpdateUserRequest:
     properties:
@@ -1681,40 +1727,40 @@ paths:
       - Configuration
   /api/groups:
     get:
-      description: Get a paginated list of groups with filtering
+      consumes:
+      - application/json
+      description: List groups with pagination and filtering
       parameters:
-      - description: Filter by group name
-        in: query
-        name: groupName
-        type: string
-      - description: Filter by auth method
-        enum:
-        - ldap
-        - local
-        in: query
+      - in: query
         name: authMethod
         type: string
-      - description: Filter by role
-        in: query
-        name: role
+      - in: query
+        name: groupName
         type: string
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: 10
-        description: Items per page
-        in: query
+      - in: query
+        maximum: 100
+        minimum: 1
         name: limit
         type: integer
+      - in: query
+        minimum: 1
+        name: page
+        type: integer
+      - in: query
+        name: role
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dto.GroupListResponse'
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.GroupListResponse'
+              type: object
         "400":
           description: Bad Request
           schema:
@@ -1757,13 +1803,15 @@ paths:
       - Groups
   /api/groups/{groupName}:
     delete:
-      description: Delete a group
+      description: Delete group by name
       parameters:
       - description: Group name
         in: path
         name: groupName
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -1779,7 +1827,7 @@ paths:
       tags:
       - Groups
     get:
-      description: Get detailed information about a group
+      description: Get group information by name
       parameters:
       - description: Group name
         in: path
@@ -1792,7 +1840,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dto.GroupResponse'
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.GroupResponse'
+              type: object
         "404":
           description: Not Found
           schema:
@@ -1842,17 +1895,14 @@ paths:
     put:
       consumes:
       - application/json
-      description: Perform actions like enable, disable
+      description: Enable or disable a group
       parameters:
       - description: Group name
         in: path
         name: groupName
         required: true
         type: string
-      - description: Action
-        enum:
-        - enable
-        - disable
+      - description: Action (enable/disable)
         in: path
         name: action
         required: true
@@ -1868,9 +1918,13 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Perform group action
+      summary: Perform action on group
       tags:
       - Groups
   /api/search/analytics:

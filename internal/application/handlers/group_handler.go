@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"govpn/internal/application/dto"
 	"govpn/internal/domain/entities"
 	"govpn/internal/domain/usecases"
@@ -15,14 +17,16 @@ import (
 )
 
 type GroupHandler struct {
-	groupUsecase usecases.GroupUsecase
-	xmlrpcClient *xmlrpc.Client
+	groupUsecase  usecases.GroupUsecase
+	configUsecase usecases.ConfigUsecase
+	xmlrpcClient  *xmlrpc.Client
 }
 
-func NewGroupHandler(groupUsecase usecases.GroupUsecase, xmlrpcClient *xmlrpc.Client) *GroupHandler {
+func NewGroupHandler(groupUsecase usecases.GroupUsecase, configUsecase usecases.ConfigUsecase, xmlrpcClient *xmlrpc.Client) *GroupHandler {
 	return &GroupHandler{
-		groupUsecase: groupUsecase,
-		xmlrpcClient: xmlrpcClient,
+		groupUsecase:  groupUsecase,
+		configUsecase: configUsecase,
+		xmlrpcClient:  xmlrpcClient,
 	}
 }
 
@@ -46,6 +50,15 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
+	// Set default values
+	if req.MFA == nil {
+		defaultMFA := true
+		req.MFA = &defaultMFA
+	}
+	if req.Role == "" {
+		req.Role = entities.UserRoleUser
+	}
+
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Create group request validation failed")
@@ -59,12 +72,52 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
+	// Validate GroupSubnet and GroupRange with current state
+	// Need to get effective values after merge to validate properly
+	var effectiveGroupSubnet, effectiveGroupRange []string
+
+	if req.GroupSubnet != nil {
+		effectiveGroupSubnet = req.GroupSubnet
+	} else {
+		// Will preserve existing - need to get existing group to validate
+		existingGroup, err := h.groupUsecase.GetGroup(c.Request.Context(), req.GroupName)
+		if err != nil {
+			if appErr, ok := err.(*errors.AppError); ok {
+				RespondWithError(c, appErr)
+			} else {
+				RespondWithError(c, errors.InternalServerError("Failed to get existing group for validation", err))
+			}
+			return
+		}
+		effectiveGroupSubnet = existingGroup.GroupSubnet
+	}
+
+	if req.GroupRange != nil {
+		effectiveGroupRange = req.GroupRange
+	} else {
+		// Use existing or empty if we already fetched existing group
+		if existingGroup, err := h.groupUsecase.GetGroup(c.Request.Context(), req.GroupName); err == nil {
+			effectiveGroupRange = existingGroup.GroupRange
+		}
+	}
+
+	if err := h.validateGroupSubnetAndRange(c.Request.Context(), effectiveGroupSubnet, effectiveGroupRange); err != nil {
+		RespondWithError(c, errors.BadRequest(err.Error(), err))
+		return
+	}
+
 	// Convert DTO to entity
 	group := &entities.Group{
 		GroupName:     req.GroupName,
 		AuthMethod:    req.AuthMethod,
 		AccessControl: req.AccessControl,
+		Role:          req.Role,
+		GroupSubnet:   req.GroupSubnet,
+		GroupRange:    req.GroupRange,
 	}
+
+	// Set MFA
+	group.SetMFA(*req.MFA)
 
 	// Create group
 	if err := h.groupUsecase.CreateGroup(c.Request.Context(), group); err != nil {
@@ -76,23 +129,17 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	// Restart OpenVPN service
-	if err := h.xmlrpcClient.RunStart(); err != nil {
-		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group creation")
-		// Don't fail the request, just log the error
-	}
-
 	RespondWithMessage(c, nethttp.StatusCreated, "Group created successfully")
 }
 
 // GetGroup godoc
 // @Summary Get group by name
-// @Description Get detailed information about a group
+// @Description Get group information by name
 // @Tags Groups
 // @Security BearerAuth
 // @Produce json
 // @Param groupName path string true "Group name"
-// @Success 200 {object} dto.GroupResponse
+// @Success 200 {object} dto.SuccessResponse{data=dto.GroupResponse}
 // @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName} [get]
 func (h *GroupHandler) GetGroup(c *gin.Context) {
@@ -120,6 +167,8 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 		Role:          group.Role,
 		DenyAccess:    group.DenyAccess == "true",
 		AccessControl: group.AccessControl,
+		GroupSubnet:   group.GroupSubnet,
+		GroupRange:    group.GroupRange,
 	}
 
 	RespondWithSuccess(c, nethttp.StatusOK, response)
@@ -158,6 +207,11 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
+	// Set default Role if empty
+	if req.Role == "" {
+		req.Role = entities.UserRoleUser
+	}
+
 	// Validate request
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Update group request validation failed")
@@ -165,14 +219,32 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
+	// Validate GroupSubnet and GroupRange - Note: Full validation with conflict check is done in usecase
+
 	// Convert DTO to entity
 	group := &entities.Group{
-		GroupName:     groupName,
-		AccessControl: req.AccessControl,
+		GroupName: groupName,
+		Role:      req.Role,
+	}
+
+	// Handle arrays: nil vs [] semantics
+	// nil = preserve existing, [] = clear, [values] = replace
+	if req.AccessControl != nil {
+		group.AccessControl = req.AccessControl
+	}
+	if req.GroupSubnet != nil {
+		group.GroupSubnet = req.GroupSubnet
+	}
+	if req.GroupRange != nil {
+		group.GroupRange = req.GroupRange
 	}
 
 	if req.DenyAccess != nil {
 		group.SetDenyAccess(*req.DenyAccess)
+	}
+
+	if req.MFA != nil {
+		group.SetMFA(*req.MFA)
 	}
 
 	// Update group
@@ -185,19 +257,15 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
-	// Restart OpenVPN service
-	if err := h.xmlrpcClient.RunStart(); err != nil {
-		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group update")
-	}
-
 	RespondWithMessage(c, nethttp.StatusOK, "Group updated successfully")
 }
 
 // DeleteGroup godoc
 // @Summary Delete group
-// @Description Delete a group
+// @Description Delete group by name
 // @Tags Groups
 // @Security BearerAuth
+// @Produce json
 // @Param groupName path string true "Group name"
 // @Success 200 {object} dto.MessageResponse
 // @Failure 404 {object} dto.ErrorResponse
@@ -224,25 +292,92 @@ func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 		return
 	}
 
-	// Restart OpenVPN service
-	if err := h.xmlrpcClient.RunStart(); err != nil {
-		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group deletion")
-	}
-
 	RespondWithMessage(c, nethttp.StatusOK, "Group deleted successfully")
 }
 
+// ListGroups godoc
+// @Summary List groups
+// @Description List groups with pagination and filtering
+// @Tags Groups
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param filter query dto.GroupFilter false "Filter parameters"
+// @Success 200 {object} dto.SuccessResponse{data=dto.GroupListResponse}
+// @Failure 400 {object} dto.ErrorResponse
+// @Router /api/groups [get]
+func (h *GroupHandler) ListGroups(c *gin.Context) {
+	var filter dto.GroupFilter
+	if err := c.ShouldBindQuery(&filter); err != nil {
+		logger.Log.WithError(err).Error("Failed to bind group filter")
+		RespondWithError(c, errors.BadRequest("Invalid filter parameters", err))
+		return
+	}
+
+	// Validate filter
+	if err := validator.Validate(&filter); err != nil {
+		logger.Log.WithError(err).Error("Group filter validation failed")
+		RespondWithValidationError(c, err)
+		return
+	}
+
+	// Convert DTO filter to entity filter
+	entityFilter := &entities.GroupFilter{
+		GroupName:  filter.GroupName,
+		AuthMethod: filter.AuthMethod,
+		Role:       filter.Role,
+		Page:       filter.Page,
+		Limit:      filter.Limit,
+		Offset:     (filter.Page - 1) * filter.Limit,
+	}
+
+	groups, totalCount, err := h.groupUsecase.ListGroupsWithTotal(c.Request.Context(), entityFilter)
+	if err != nil {
+		if appErr, ok := err.(*errors.AppError); ok {
+			RespondWithError(c, appErr)
+		} else {
+			RespondWithError(c, errors.InternalServerError("Failed to list groups", err))
+		}
+		return
+	}
+
+	// Convert entities to DTOs
+	var groupResponses []dto.GroupResponse
+	for _, group := range groups {
+		groupResponses = append(groupResponses, dto.GroupResponse{
+			GroupName:     group.GroupName,
+			AuthMethod:    group.AuthMethod,
+			MFA:           group.MFA == "true",
+			Role:          group.Role,
+			DenyAccess:    group.DenyAccess == "true",
+			AccessControl: group.AccessControl,
+			GroupSubnet:   group.GroupSubnet,
+			GroupRange:    group.GroupRange,
+		})
+	}
+
+	response := dto.GroupListResponse{
+		Groups: groupResponses,
+		Total:  totalCount,
+		Page:   filter.Page,
+		Limit:  filter.Limit,
+	}
+
+	RespondWithSuccess(c, nethttp.StatusOK, response)
+}
+
 // GroupAction godoc
-// @Summary Perform group action
-// @Description Perform actions like enable, disable
+// @Summary Perform action on group
+// @Description Enable or disable a group
 // @Tags Groups
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param groupName path string true "Group name"
-// @Param action path string true "Action" Enums(enable, disable)
+// @Param action path string true "Action (enable/disable)"
 // @Success 200 {object} dto.MessageResponse
 // @Failure 400 {object} dto.ErrorResponse
+// @Failure 404 {object} dto.ErrorResponse
 // @Router /api/groups/{groupName}/{action} [put]
 func (h *GroupHandler) GroupAction(c *gin.Context) {
 	groupName := c.Param("groupName")
@@ -254,12 +389,11 @@ func (h *GroupHandler) GroupAction(c *gin.Context) {
 	}
 
 	// BASIC FIX: Check if group is system group
-	if h.isSystemGroup(groupName) && action == "disable" {
-		RespondWithError(c, errors.BadRequest("Cannot disable system group", nil))
+	if h.isSystemGroup(groupName) {
+		RespondWithError(c, errors.BadRequest("Cannot modify system group", nil))
 		return
 	}
 
-	// Validate action
 	if action != "enable" && action != "disable" {
 		RespondWithError(c, errors.BadRequest("Invalid action. Allowed actions: enable, disable", nil))
 		return
@@ -319,90 +453,21 @@ func (h *GroupHandler) GroupAction(c *gin.Context) {
 		}
 		RespondWithMessage(c, nethttp.StatusOK, "Group disabled successfully")
 	}
-
-	// Restart OpenVPN service
-	if err := h.xmlrpcClient.RunStart(); err != nil {
-		logger.Log.WithError(err).Error("Failed to restart OpenVPN service after group action")
-	}
 }
 
-// ListGroups godoc
-// @Summary List groups
-// @Description Get a paginated list of groups with filtering
-// @Tags Groups
-// @Security BearerAuth
-// @Produce json
-// @Param groupName query string false "Filter by group name"
-// @Param authMethod query string false "Filter by auth method" Enums(ldap, local)
-// @Param role query string false "Filter by role"
-// @Param page query int false "Page number" default(1)
-// @Param limit query int false "Items per page" default(10)
-// @Success 200 {object} dto.GroupListResponse
-// @Failure 400 {object} dto.ErrorResponse
-// @Router /api/groups [get]
-func (h *GroupHandler) ListGroups(c *gin.Context) {
-	var filter dto.GroupFilter
-	if err := c.ShouldBindQuery(&filter); err != nil {
-		logger.Log.WithError(err).Error("Failed to bind group filter")
-		RespondWithError(c, errors.BadRequest("Invalid filter parameters", err))
-		return
+// validateGroupSubnetAndRange validates GroupSubnet and GroupRange according to business rules
+// NOTE: This function is now moved to usecase layer for better separation of concerns
+// and to include comprehensive conflict checking with existing groups
+func (h *GroupHandler) validateGroupSubnetAndRange(ctx context.Context, groupSubnets, groupRanges []string) error {
+	// Basic validation can be done here, but comprehensive validation
+	// including conflict checking is now handled in usecase layer
+	if len(groupSubnets) == 0 && len(groupRanges) > 0 {
+		return fmt.Errorf("GroupRange requires GroupSubnet to be specified")
 	}
 
-	// Validate filter
-	if err := validator.Validate(&filter); err != nil {
-		logger.Log.WithError(err).Error("Group filter validation failed")
-		RespondWithValidationError(c, err)
-		return
-	}
-
-	// ✅ FIX: Calculate Offset from Page and Limit
-	offset := 0
-	if filter.Page > 1 {
-		offset = (filter.Page - 1) * filter.Limit
-	}
-
-	// Convert DTO filter to entity filter
-	entityFilter := &entities.GroupFilter{
-		GroupName:  filter.GroupName,
-		AuthMethod: filter.AuthMethod,
-		Role:       filter.Role,
-		Page:       filter.Page,
-		Limit:      filter.Limit,
-		Offset:     offset, // ✅ FIX: Set calculated offset
-	}
-
-	// Get groups with total count
-	groups, totalCount, err := h.groupUsecase.ListGroupsWithTotal(c.Request.Context(), entityFilter)
-	if err != nil {
-		if appErr, ok := err.(*errors.AppError); ok {
-			RespondWithError(c, appErr)
-		} else {
-			RespondWithError(c, errors.InternalServerError("Failed to list groups", err))
-		}
-		return
-	}
-
-	// Convert entities to DTOs
-	var groupResponses []dto.GroupResponse
-	for _, group := range groups {
-		groupResponses = append(groupResponses, dto.GroupResponse{
-			GroupName:     group.GroupName,
-			AuthMethod:    group.AuthMethod,
-			MFA:           group.MFA == "true",
-			Role:          group.Role,
-			DenyAccess:    group.DenyAccess == "true",
-			AccessControl: group.AccessControl,
-		})
-	}
-
-	response := dto.GroupListResponse{
-		Groups: groupResponses,
-		Total:  totalCount, // ✅ Fixed total count
-		Page:   filter.Page,
-		Limit:  filter.Limit,
-	}
-
-	RespondWithSuccess(c, nethttp.StatusOK, response)
+	// For detailed validation including overlap checking with existing groups,
+	// see validateGroupSubnetAndRangeWithConflictCheck in group_usecase_impl.go
+	return nil
 }
 
 // BASIC FIX: Helper functions to validate group names

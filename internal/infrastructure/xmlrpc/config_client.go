@@ -101,7 +101,6 @@ func (c *ConfigClient) parseConfigResponse(body []byte) (map[string]string, erro
 	// Parse từng member trong struct
 	for _, member := range xmlResp.Params.Param.Value.Struct.Members {
 		key := member.Name
-		fmt.Print("Parsing key: ", key, "\n")
 		// Handle different value types
 		if member.Value.String != "" {
 			configMap[key] = member.Value.String

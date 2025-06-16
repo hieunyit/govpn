@@ -23,10 +23,50 @@ func init() {
 	validate.RegisterValidation("mac_address", validateMACAddress)
 	validate.RegisterValidation("ipv4_protocol", validateIPProtocol)
 	validate.RegisterValidation("password_if_local", validatePasswordIfLocal)
+	validate.RegisterValidation("ip_range", validateIPRange) // ← NEW: Add IP range validation
 }
 
 func Validate(s interface{}) error {
 	return validate.Struct(s)
+}
+
+// NEW: Custom validation for IP range format "IP1-IP2"
+func validateIPRange(fl validator.FieldLevel) bool {
+	value := fl.Field().String()
+	if value == "" {
+		return true // Allow empty for optional fields
+	}
+
+	// Expected format: "10.10.10.10-10.10.10.100"
+	parts := strings.Split(value, "-")
+	if len(parts) != 2 {
+		return false
+	}
+
+	startIP := strings.TrimSpace(parts[0])
+	endIP := strings.TrimSpace(parts[1])
+
+	// Validate both IPs
+	if net.ParseIP(startIP) == nil {
+		return false
+	}
+	if net.ParseIP(endIP) == nil {
+		return false
+	}
+
+	// Optional: Check if start <= end (convert to uint32 for comparison)
+	startBytes := net.ParseIP(startIP).To4()
+	endBytes := net.ParseIP(endIP).To4()
+
+	if startBytes == nil || endBytes == nil {
+		return false // Not IPv4
+	}
+
+	// Convert to uint32 for comparison
+	startInt := uint32(startBytes[0])<<24 + uint32(startBytes[1])<<16 + uint32(startBytes[2])<<8 + uint32(startBytes[3])
+	endInt := uint32(endBytes[0])<<24 + uint32(endBytes[1])<<16 + uint32(endBytes[2])<<8 + uint32(endBytes[3])
+
+	return startInt <= endInt
 }
 
 func validateUsername(fl validator.FieldLevel) bool {

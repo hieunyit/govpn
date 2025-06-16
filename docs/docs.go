@@ -643,7 +643,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a paginated list of groups with filtering",
+                "description": "List groups with pagination and filtering",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -654,38 +657,30 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter by group name",
-                        "name": "groupName",
-                        "in": "query"
-                    },
-                    {
-                        "enum": [
-                            "ldap",
-                            "local"
-                        ],
-                        "type": "string",
-                        "description": "Filter by auth method",
                         "name": "authMethod",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by role",
-                        "name": "role",
+                        "name": "groupName",
                         "in": "query"
                     },
                     {
+                        "maximum": 100,
+                        "minimum": 1,
                         "type": "integer",
-                        "default": 1,
-                        "description": "Page number",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
                         "name": "page",
                         "in": "query"
                     },
                     {
-                        "type": "integer",
-                        "default": 10,
-                        "description": "Items per page",
-                        "name": "limit",
+                        "type": "string",
+                        "name": "role",
                         "in": "query"
                     }
                 ],
@@ -693,7 +688,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dto.GroupListResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.GroupListResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -761,7 +768,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get detailed information about a group",
+                "description": "Get group information by name",
                 "produces": [
                     "application/json"
                 ],
@@ -782,7 +789,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dto.GroupResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dto.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.GroupResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "404": {
@@ -855,7 +874,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a group",
+                "description": "Delete group by name",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Groups"
                 ],
@@ -892,7 +914,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Perform actions like enable, disable",
+                "description": "Enable or disable a group",
                 "consumes": [
                     "application/json"
                 ],
@@ -902,7 +924,7 @@ const docTemplate = `{
                 "tags": [
                     "Groups"
                 ],
-                "summary": "Perform group action",
+                "summary": "Perform action on group",
                 "parameters": [
                     {
                         "type": "string",
@@ -912,12 +934,8 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "enum": [
-                            "enable",
-                            "disable"
-                        ],
                         "type": "string",
-                        "description": "Action",
+                        "description": "Action (enable/disable)",
                         "name": "action",
                         "in": "path",
                         "required": true
@@ -932,6 +950,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2708,6 +2732,28 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 50,
                     "minLength": 3
+                },
+                "groupRange": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "groupSubnet": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "mfa": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "User",
+                        "Admin"
+                    ]
                 }
             }
         },
@@ -2852,6 +2898,18 @@ const docTemplate = `{
                 "groupName": {
                     "type": "string"
                 },
+                "groupRange": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "groupSubnet": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "lastModified": {
                     "type": "string",
                     "example": "2024-03-10T14:22:00Z"
@@ -2952,6 +3010,18 @@ const docTemplate = `{
                 },
                 "groupName": {
                     "type": "string"
+                },
+                "groupRange": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "groupSubnet": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "mfa": {
                     "type": "boolean"
@@ -3528,6 +3598,28 @@ const docTemplate = `{
                 },
                 "denyAccess": {
                     "type": "boolean"
+                },
+                "groupRange": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "groupSubnet": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "mfa": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "User",
+                        "Admin"
+                    ]
                 }
             }
         },
