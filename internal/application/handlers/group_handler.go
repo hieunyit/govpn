@@ -79,27 +79,15 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	if req.GroupSubnet != nil {
 		effectiveGroupSubnet = req.GroupSubnet
 	} else {
-		// Will preserve existing - need to get existing group to validate
-		existingGroup, err := h.groupUsecase.GetGroup(c.Request.Context(), req.GroupName)
-		if err != nil {
-			if appErr, ok := err.(*errors.AppError); ok {
-				RespondWithError(c, appErr)
-			} else {
-				RespondWithError(c, errors.InternalServerError("Failed to get existing group for validation", err))
-			}
-			return
-		}
-		effectiveGroupSubnet = existingGroup.GroupSubnet
+		effectiveGroupSubnet = []string{}
 	}
 
 	if req.GroupRange != nil {
 		effectiveGroupRange = req.GroupRange
 	} else {
-		// Use existing or empty if we already fetched existing group
-		if existingGroup, err := h.groupUsecase.GetGroup(c.Request.Context(), req.GroupName); err == nil {
-			effectiveGroupRange = existingGroup.GroupRange
-		}
+		effectiveGroupRange = []string{}
 	}
+
 
 	if err := h.validateGroupSubnetAndRange(c.Request.Context(), effectiveGroupSubnet, effectiveGroupRange); err != nil {
 		RespondWithError(c, errors.BadRequest(err.Error(), err))
