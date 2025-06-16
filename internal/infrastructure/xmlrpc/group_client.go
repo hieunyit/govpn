@@ -480,27 +480,17 @@ func (c *GroupClient) makeGetAllGroupsRequest() string {
 
 func (c *GroupClient) makeDeleteGroupRequest(groupName string) string {
 	return fmt.Sprintf(`<?xml version="1.0"?><methodCall>
-<methodName>UserPropDel</methodName>
+<methodName>UserPropDelete</methodName>
 <params>
 	<param>
 		<value>
 			<string>%s</string>
 		</value>
 	</param>
-	<param>
-		<value>
-			<array>
-				<data>
-					<value>
-						<string>type</string>
-					</value>
-				</data>
-			</array>
-		</value>
-	</param>
 </params>
 </methodCall>`, c.xmlEscape(groupName))
 }
+
 
 func (c *GroupClient) GroupPropDel(group *entities.Group) error {
 	xmlRequest := c.makeGroupPropDelRequest(group)
