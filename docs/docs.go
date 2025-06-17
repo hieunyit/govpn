@@ -400,10 +400,10 @@ const docTemplate = `{
                 "tags": [
                     "Bulk Operations"
                 ],
-                "summary": "Bulk extend users",
+                "summary": "Bulk extend user expiration",
                 "parameters": [
                     {
-                        "description": "Bulk user extend data",
+                        "description": "Bulk user extension data",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1430,24 +1430,24 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a paginated list of users with filtering",
+                "description": "Get a paginated list of users with comprehensive filtering options",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Users"
                 ],
-                "summary": "List users",
+                "summary": "List users with enhanced filtering",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter by username",
+                        "description": "Filter by username (supports partial match)",
                         "name": "username",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by email",
+                        "description": "Filter by email (supports partial match)",
                         "name": "email",
                         "in": "query"
                     },
@@ -1478,6 +1478,93 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Filter by enabled status",
+                        "name": "isEnabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by access denial status",
+                        "name": "denyAccess",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by MFA status",
+                        "name": "mfaEnabled",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Users expiring after date (YYYY-MM-DD)",
+                        "name": "userExpirationAfter",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Users expiring before date (YYYY-MM-DD)",
+                        "name": "userExpirationBefore",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include expired users",
+                        "name": "includeExpired",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Users expiring within X days",
+                        "name": "expiringInDays",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by access control presence",
+                        "name": "hasAccessControl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by MAC address",
+                        "name": "macAddress",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across username, email, group",
+                        "name": "searchText",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "username",
+                            "email",
+                            "authMethod",
+                            "role",
+                            "groupName",
+                            "userExpiration"
+                        ],
+                        "type": "string",
+                        "default": "username",
+                        "description": "Sort field",
+                        "name": "sortBy",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "asc",
+                        "description": "Sort order",
+                        "name": "sortOrder",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "default": 1,
                         "description": "Page number",
@@ -1486,9 +1573,23 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "default": 10,
-                        "description": "Items per page",
+                        "default": 20,
+                        "description": "Items per page (max 100)",
                         "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Use exact matching instead of partial",
+                        "name": "exactMatch",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Case sensitive search",
+                        "name": "caseSensitive",
                         "in": "query"
                     }
                 ],
@@ -2973,6 +3074,38 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.FilterMetadata": {
+            "type": "object",
+            "properties": {
+                "appliedFilters": {
+                    "description": "List of applied filters",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "username",
+                        "authMethod",
+                        "isEnabled"
+                    ]
+                },
+                "filterCount": {
+                    "description": "Number of active filters",
+                    "type": "integer",
+                    "example": 3
+                },
+                "sortOrder": {
+                    "description": "Current sort order",
+                    "type": "string",
+                    "example": "asc"
+                },
+                "sortedBy": {
+                    "description": "Current sort field",
+                    "type": "string",
+                    "example": "username"
+                }
+            }
+        },
         "dto.GroupListResponse": {
             "type": "object",
             "properties": {
@@ -3696,7 +3829,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "daysUntilExpiry": {
-                    "description": "NEW: Số ngày còn lại",
+                    "description": "Số ngày còn lại",
                     "type": "integer"
                 },
                 "denyAccess": {
@@ -3706,7 +3839,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "expirationStatus": {
-                    "description": "NEW: \"expired\", \"expiring\", \"warning\"",
+                    "description": "\"expired\", \"expiring\", \"warning\"",
                     "type": "string"
                 },
                 "groupName": {
@@ -3749,6 +3882,134 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UserFilter": {
+            "type": "object",
+            "properties": {
+                "authMethod": {
+                    "type": "string",
+                    "enum": [
+                        "ldap",
+                        "local"
+                    ],
+                    "example": "local"
+                },
+                "caseSensitive": {
+                    "description": "Case sensitive search",
+                    "type": "boolean",
+                    "example": false
+                },
+                "denyAccess": {
+                    "description": "Filter by access denial status",
+                    "type": "boolean",
+                    "example": false
+                },
+                "email": {
+                    "type": "string",
+                    "example": "test@example.com"
+                },
+                "exactMatch": {
+                    "description": "NEW: Search options",
+                    "type": "boolean",
+                    "example": false
+                },
+                "expiringInDays": {
+                    "description": "Users expiring within X days",
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 7
+                },
+                "groupName": {
+                    "type": "string",
+                    "example": "TEST_GR"
+                },
+                "hasAccessControl": {
+                    "description": "NEW: Advanced filters",
+                    "type": "boolean",
+                    "example": true
+                },
+                "includeExpired": {
+                    "description": "Include expired users",
+                    "type": "boolean",
+                    "example": true
+                },
+                "isEnabled": {
+                    "description": "NEW: Status filters",
+                    "type": "boolean",
+                    "example": true
+                },
+                "limit": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1,
+                    "example": 20
+                },
+                "macAddress": {
+                    "description": "Filter by MAC address",
+                    "type": "string",
+                    "example": "5E:CD:C9:D4:88:65"
+                },
+                "mfaEnabled": {
+                    "description": "Filter by MFA status",
+                    "type": "boolean",
+                    "example": true
+                },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 1
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "Admin",
+                        "User"
+                    ],
+                    "example": "User"
+                },
+                "searchText": {
+                    "description": "Search across username, email, group",
+                    "type": "string",
+                    "minLength": 2,
+                    "example": "john"
+                },
+                "sortBy": {
+                    "description": "Enhanced sorting \u0026 pagination",
+                    "type": "string",
+                    "enum": [
+                        "username",
+                        "email",
+                        "authMethod",
+                        "role",
+                        "groupName",
+                        "userExpiration"
+                    ],
+                    "example": "username"
+                },
+                "sortOrder": {
+                    "type": "string",
+                    "enum": [
+                        "asc",
+                        "desc"
+                    ],
+                    "example": "asc"
+                },
+                "userExpirationAfter": {
+                    "description": "NEW: Expiration filters",
+                    "type": "string",
+                    "example": "2025-06-17"
+                },
+                "userExpirationBefore": {
+                    "description": "Users expiring before date",
+                    "type": "string",
+                    "example": "2025-06-22"
+                },
+                "username": {
+                    "description": "Basic filters (existing)",
+                    "type": "string",
+                    "example": "testuser"
+                }
+            }
+        },
         "dto.UserInfo": {
             "type": "object",
             "properties": {
@@ -3766,9 +4027,25 @@ const docTemplate = `{
         "dto.UserListResponse": {
             "type": "object",
             "properties": {
+                "filters": {
+                    "description": "NEW: Applied filters",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.UserFilter"
+                        }
+                    ]
+                },
                 "limit": {
                     "type": "integer",
-                    "example": 10
+                    "example": 20
+                },
+                "metadata": {
+                    "description": "NEW: Filter metadata",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.FilterMetadata"
+                        }
+                    ]
                 },
                 "page": {
                     "type": "integer",
@@ -3777,6 +4054,11 @@ const docTemplate = `{
                 "total": {
                     "type": "integer",
                     "example": 50
+                },
+                "totalPages": {
+                    "description": "NEW: Total pages",
+                    "type": "integer",
+                    "example": 3
                 },
                 "users": {
                     "type": "array",
@@ -3802,6 +4084,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "local"
                 },
+                "daysUntilExpiration": {
+                    "description": "Days until expiration (-1 if expired)",
+                    "type": "integer",
+                    "example": 30
+                },
                 "denyAccess": {
                     "type": "boolean",
                     "example": false
@@ -3813,6 +4100,16 @@ const docTemplate = `{
                 "groupName": {
                     "type": "string",
                     "example": "TEST_GR"
+                },
+                "isEnabled": {
+                    "description": "NEW: Computed fields for enhanced filtering",
+                    "type": "boolean",
+                    "example": true
+                },
+                "isExpired": {
+                    "description": "Whether user is past expiration",
+                    "type": "boolean",
+                    "example": false
                 },
                 "macAddresses": {
                     "type": "array",

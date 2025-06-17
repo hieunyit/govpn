@@ -9,9 +9,12 @@ import (
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
 	"govpn/pkg/validator"
+	"math"
 	nethttp "net/http"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -124,19 +127,8 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	// Convert entity to DTO
-	response := dto.UserResponse{
-		Username:       user.Username,
-		Email:          user.Email,
-		AuthMethod:     user.AuthMethod,
-		UserExpiration: user.UserExpiration,
-		MacAddresses:   user.MacAddresses,
-		MFA:            user.MFA == "true",
-		Role:           user.Role,
-		DenyAccess:     user.DenyAccess == "true",
-		AccessControl:  user.AccessControl,
-		GroupName:      user.GroupName,
-	}
+	// Convert entity to DTO with enhanced fields
+	response := h.convertUserToResponse(user)
 
 	respondWithSuccess(c, nethttp.StatusOK, response)
 }
@@ -378,18 +370,32 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 }
 
 // ListUsers godoc
-// @Summary List users
-// @Description Get a paginated list of users with filtering
+// @Summary List users with enhanced filtering
+// @Description Get a paginated list of users with comprehensive filtering options
 // @Tags Users
 // @Security BearerAuth
 // @Produce json
-// @Param username query string false "Filter by username"
-// @Param email query string false "Filter by email"
+// @Param username query string false "Filter by username (supports partial match)"
+// @Param email query string false "Filter by email (supports partial match)"
 // @Param authMethod query string false "Filter by auth method" Enums(ldap, local)
 // @Param role query string false "Filter by role" Enums(Admin, User)
 // @Param groupName query string false "Filter by group name"
+// @Param isEnabled query boolean false "Filter by enabled status"
+// @Param denyAccess query boolean false "Filter by access denial status"
+// @Param mfaEnabled query boolean false "Filter by MFA status"
+// @Param userExpirationAfter query string false "Users expiring after date (YYYY-MM-DD)"
+// @Param userExpirationBefore query string false "Users expiring before date (YYYY-MM-DD)"
+// @Param includeExpired query boolean false "Include expired users" default(true)
+// @Param expiringInDays query int false "Users expiring within X days"
+// @Param hasAccessControl query boolean false "Filter by access control presence"
+// @Param macAddress query string false "Filter by MAC address"
+// @Param searchText query string false "Search across username, email, group"
+// @Param sortBy query string false "Sort field" Enums(username, email, authMethod, role, groupName, userExpiration) default(username)
+// @Param sortOrder query string false "Sort order" Enums(asc, desc) default(asc)
 // @Param page query int false "Page number" default(1)
-// @Param limit query int false "Items per page" default(10)
+// @Param limit query int false "Items per page (max 100)" default(20)
+// @Param exactMatch query boolean false "Use exact matching instead of partial" default(false)
+// @Param caseSensitive query boolean false "Case sensitive search" default(false)
 // @Success 200 {object} dto.UserListResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Router /api/users [get]
@@ -401,28 +407,24 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
+	// Set defaults
+	filter.SetDefaults()
+
+	// Enhanced validation
 	if err := validator.Validate(&filter); err != nil {
 		logger.Log.WithError(err).Error("User filter validation failed")
 		respondWithValidationError(c, err)
 		return
 	}
 
-	// ✅ FIX: Calculate Offset from Page and Limit
-	offset := 0
-	if filter.Page > 1 {
-		offset = (filter.Page - 1) * filter.Limit
+	// Additional validation for new filters
+	if err := h.validateUserFilter(&filter); err != nil {
+		respondWithError(c, errors.BadRequest("Invalid filter parameters", err))
+		return
 	}
 
-	entityFilter := &entities.UserFilter{
-		Username:   filter.Username,
-		Email:      filter.Email,
-		AuthMethod: filter.AuthMethod,
-		Role:       filter.Role,
-		GroupName:  filter.GroupName,
-		Page:       filter.Page,
-		Limit:      filter.Limit,
-		Offset:     offset, // ✅ FIX: Set calculated offset
-	}
+	// Convert DTO filter to entity filter
+	entityFilter := h.convertToEntityFilter(&filter)
 
 	// Get users with total count
 	users, totalCount, err := h.userUsecase.ListUsersWithTotal(c.Request.Context(), entityFilter)
@@ -435,27 +437,24 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	var userResponses []dto.UserResponse
-	for _, user := range users {
-		userResponses = append(userResponses, dto.UserResponse{
-			Username:       user.Username,
-			Email:          user.Email,
-			AuthMethod:     user.AuthMethod,
-			UserExpiration: user.UserExpiration,
-			MacAddresses:   user.MacAddresses,
-			MFA:            user.MFA == "true",
-			Role:           user.Role,
-			DenyAccess:     user.DenyAccess == "true",
-			AccessControl:  user.AccessControl,
-			GroupName:      user.GroupName,
-		})
+	// Convert to response DTOs
+	userResponses := make([]dto.UserResponse, len(users))
+	for i, user := range users {
+		userResponses[i] = h.convertUserToResponse(user)
 	}
 
+	// Calculate total pages
+	totalPages := int(math.Ceil(float64(totalCount) / float64(filter.Limit)))
+
+	// Build enhanced response with metadata
 	response := dto.UserListResponse{
-		Users: userResponses,
-		Total: totalCount, // ✅ Fixed total count
-		Page:  filter.Page,
-		Limit: filter.Limit,
+		Users:      userResponses,
+		Total:      totalCount,
+		Page:       filter.Page,
+		Limit:      filter.Limit,
+		TotalPages: totalPages,
+		Filters:    filter,
+		Metadata:   h.buildFilterMetadata(&filter),
 	}
 
 	respondWithSuccess(c, nethttp.StatusOK, response)
@@ -512,6 +511,165 @@ func (h *UserHandler) GetUserExpirations(c *gin.Context) {
 	}
 
 	respondWithSuccess(c, nethttp.StatusOK, response)
+}
+
+// NEW: Helper method to validate enhanced user filters
+func (h *UserHandler) validateUserFilter(filter *dto.UserFilter) error {
+	// Date validation
+	if filter.UserExpirationAfter != nil && filter.UserExpirationBefore != nil {
+		if filter.UserExpirationAfter.After(*filter.UserExpirationBefore) {
+			return errors.BadRequest("userExpirationAfter cannot be after userExpirationBefore", nil)
+		}
+	}
+
+	// Expiring days validation
+	if filter.ExpiringInDays != nil && *filter.ExpiringInDays < 0 {
+		return errors.BadRequest("expiringInDays must be non-negative", nil)
+	}
+
+	// Search text length validation
+	if filter.SearchText != "" && len(filter.SearchText) < 2 {
+		return errors.BadRequest("searchText must be at least 2 characters", nil)
+	}
+
+	// MAC address format validation (basic)
+	if filter.MacAddress != "" {
+		macPattern := `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`
+		if matched, _ := regexp.MatchString(macPattern, filter.MacAddress); !matched {
+			return errors.BadRequest("Invalid MAC address format", nil)
+		}
+	}
+
+	return nil
+}
+
+// NEW: Helper method to convert DTO filter to entity filter
+func (h *UserHandler) convertToEntityFilter(dtoFilter *dto.UserFilter) *entities.UserFilter {
+	return &entities.UserFilter{
+		// Basic filters
+		Username:   dtoFilter.Username,
+		Email:      dtoFilter.Email,
+		AuthMethod: dtoFilter.AuthMethod,
+		Role:       dtoFilter.Role,
+		GroupName:  dtoFilter.GroupName,
+
+		// Status filters
+		IsEnabled:  dtoFilter.IsEnabled,
+		DenyAccess: dtoFilter.DenyAccess,
+		MFAEnabled: dtoFilter.MFAEnabled,
+
+		// Expiration filters
+		UserExpirationAfter:  dtoFilter.UserExpirationAfter,
+		UserExpirationBefore: dtoFilter.UserExpirationBefore,
+		IncludeExpired:       dtoFilter.IncludeExpired,
+		ExpiringInDays:       dtoFilter.ExpiringInDays,
+
+		// Advanced filters
+		HasAccessControl: dtoFilter.HasAccessControl,
+		MacAddress:       dtoFilter.MacAddress,
+		SearchText:       dtoFilter.SearchText,
+
+		// Sorting & pagination
+		SortBy:    dtoFilter.SortBy,
+		SortOrder: dtoFilter.SortOrder,
+		Page:      dtoFilter.Page,
+		Limit:     dtoFilter.Limit,
+		Offset:    (dtoFilter.Page - 1) * dtoFilter.Limit,
+
+		// Search options
+		ExactMatch:    dtoFilter.ExactMatch,
+		CaseSensitive: dtoFilter.CaseSensitive,
+	}
+}
+
+// NEW: Helper method to convert User entity to UserResponse DTO
+func (h *UserHandler) convertUserToResponse(user *entities.User) dto.UserResponse {
+	response := dto.UserResponse{
+		Username:       user.Username,
+		Email:          user.Email,
+		AuthMethod:     user.AuthMethod,
+		UserExpiration: user.UserExpiration,
+		MacAddresses:   user.MacAddresses,
+		MFA:            user.MFA == "true",
+		Role:           user.Role,
+		DenyAccess:     user.DenyAccess == "true",
+		AccessControl:  user.AccessControl,
+		GroupName:      user.GroupName,
+		IsEnabled:      user.DenyAccess != "true",
+	}
+
+	// Calculate expiration status
+	if user.UserExpiration != "" {
+		// Try parsing with multiple formats
+		formats := []string{"02/01/2006", "2006-01-02", "01/02/2006", "2006/01/02"}
+		for _, format := range formats {
+			if expDate, err := time.Parse(format, user.UserExpiration); err == nil {
+				response.IsExpired = time.Now().After(expDate)
+				response.DaysUntilExp = int(time.Until(expDate).Hours() / 24)
+				break
+			}
+		}
+	}
+
+	return response
+}
+
+// NEW: Helper method to build filter metadata
+func (h *UserHandler) buildFilterMetadata(filter *dto.UserFilter) dto.FilterMetadata {
+	appliedFilters := []string{}
+
+	if filter.Username != "" {
+		appliedFilters = append(appliedFilters, "username")
+	}
+	if filter.Email != "" {
+		appliedFilters = append(appliedFilters, "email")
+	}
+	if filter.AuthMethod != "" {
+		appliedFilters = append(appliedFilters, "authMethod")
+	}
+	if filter.Role != "" {
+		appliedFilters = append(appliedFilters, "role")
+	}
+	if filter.GroupName != "" {
+		appliedFilters = append(appliedFilters, "groupName")
+	}
+	if filter.IsEnabled != nil {
+		appliedFilters = append(appliedFilters, "isEnabled")
+	}
+	if filter.DenyAccess != nil {
+		appliedFilters = append(appliedFilters, "denyAccess")
+	}
+	if filter.MFAEnabled != nil {
+		appliedFilters = append(appliedFilters, "mfaEnabled")
+	}
+	if filter.UserExpirationAfter != nil {
+		appliedFilters = append(appliedFilters, "userExpirationAfter")
+	}
+	if filter.UserExpirationBefore != nil {
+		appliedFilters = append(appliedFilters, "userExpirationBefore")
+	}
+	if filter.IncludeExpired != nil {
+		appliedFilters = append(appliedFilters, "includeExpired")
+	}
+	if filter.ExpiringInDays != nil {
+		appliedFilters = append(appliedFilters, "expiringInDays")
+	}
+	if filter.HasAccessControl != nil {
+		appliedFilters = append(appliedFilters, "hasAccessControl")
+	}
+	if filter.MacAddress != "" {
+		appliedFilters = append(appliedFilters, "macAddress")
+	}
+	if filter.SearchText != "" {
+		appliedFilters = append(appliedFilters, "searchText")
+	}
+
+	return dto.FilterMetadata{
+		AppliedFilters: appliedFilters,
+		SortedBy:       filter.SortBy,
+		SortOrder:      filter.SortOrder,
+		FilterCount:    len(appliedFilters),
+	}
 }
 
 // CRITICAL FIX: Validate auth method specific requirements

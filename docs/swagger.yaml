@@ -666,6 +666,30 @@ definitions:
         example: 45
         type: integer
     type: object
+  dto.FilterMetadata:
+    properties:
+      appliedFilters:
+        description: List of applied filters
+        example:
+        - username
+        - authMethod
+        - isEnabled
+        items:
+          type: string
+        type: array
+      filterCount:
+        description: Number of active filters
+        example: 3
+        type: integer
+      sortOrder:
+        description: Current sort order
+        example: asc
+        type: string
+      sortedBy:
+        description: Current sort field
+        example: username
+        type: string
+    type: object
   dto.GroupListResponse:
     properties:
       groups:
@@ -1181,14 +1205,14 @@ definitions:
       authMethod:
         type: string
       daysUntilExpiry:
-        description: 'NEW: Số ngày còn lại'
+        description: Số ngày còn lại
         type: integer
       denyAccess:
         type: boolean
       email:
         type: string
       expirationStatus:
-        description: 'NEW: "expired", "expiring", "warning"'
+        description: '"expired", "expiring", "warning"'
         type: string
       groupName:
         type: string
@@ -1216,6 +1240,107 @@ definitions:
           $ref: '#/definitions/dto.UserExpirationInfo'
         type: array
     type: object
+  dto.UserFilter:
+    properties:
+      authMethod:
+        enum:
+        - ldap
+        - local
+        example: local
+        type: string
+      caseSensitive:
+        description: Case sensitive search
+        example: false
+        type: boolean
+      denyAccess:
+        description: Filter by access denial status
+        example: false
+        type: boolean
+      email:
+        example: test@example.com
+        type: string
+      exactMatch:
+        description: 'NEW: Search options'
+        example: false
+        type: boolean
+      expiringInDays:
+        description: Users expiring within X days
+        example: 7
+        minimum: 0
+        type: integer
+      groupName:
+        example: TEST_GR
+        type: string
+      hasAccessControl:
+        description: 'NEW: Advanced filters'
+        example: true
+        type: boolean
+      includeExpired:
+        description: Include expired users
+        example: true
+        type: boolean
+      isEnabled:
+        description: 'NEW: Status filters'
+        example: true
+        type: boolean
+      limit:
+        example: 20
+        maximum: 100
+        minimum: 1
+        type: integer
+      macAddress:
+        description: Filter by MAC address
+        example: 5E:CD:C9:D4:88:65
+        type: string
+      mfaEnabled:
+        description: Filter by MFA status
+        example: true
+        type: boolean
+      page:
+        example: 1
+        minimum: 1
+        type: integer
+      role:
+        enum:
+        - Admin
+        - User
+        example: User
+        type: string
+      searchText:
+        description: Search across username, email, group
+        example: john
+        minLength: 2
+        type: string
+      sortBy:
+        description: Enhanced sorting & pagination
+        enum:
+        - username
+        - email
+        - authMethod
+        - role
+        - groupName
+        - userExpiration
+        example: username
+        type: string
+      sortOrder:
+        enum:
+        - asc
+        - desc
+        example: asc
+        type: string
+      userExpirationAfter:
+        description: 'NEW: Expiration filters'
+        example: "2025-06-17"
+        type: string
+      userExpirationBefore:
+        description: Users expiring before date
+        example: "2025-06-22"
+        type: string
+      username:
+        description: Basic filters (existing)
+        example: testuser
+        type: string
+    type: object
   dto.UserInfo:
     properties:
       email:
@@ -1227,14 +1352,26 @@ definitions:
     type: object
   dto.UserListResponse:
     properties:
+      filters:
+        allOf:
+        - $ref: '#/definitions/dto.UserFilter'
+        description: 'NEW: Applied filters'
       limit:
-        example: 10
+        example: 20
         type: integer
+      metadata:
+        allOf:
+        - $ref: '#/definitions/dto.FilterMetadata'
+        description: 'NEW: Filter metadata'
       page:
         example: 1
         type: integer
       total:
         example: 50
+        type: integer
+      totalPages:
+        description: 'NEW: Total pages'
+        example: 3
         type: integer
       users:
         items:
@@ -1252,6 +1389,10 @@ definitions:
       authMethod:
         example: local
         type: string
+      daysUntilExpiration:
+        description: Days until expiration (-1 if expired)
+        example: 30
+        type: integer
       denyAccess:
         example: false
         type: boolean
@@ -1261,6 +1402,14 @@ definitions:
       groupName:
         example: TEST_GR
         type: string
+      isEnabled:
+        description: 'NEW: Computed fields for enhanced filtering'
+        example: true
+        type: boolean
+      isExpired:
+        description: Whether user is past expiration
+        example: false
+        type: boolean
       macAddresses:
         example:
         - 5E:CD:C9:D4:88:65
@@ -1574,7 +1723,7 @@ paths:
       - application/json
       description: Extend expiration date for multiple users
       parameters:
-      - description: Bulk user extend data
+      - description: Bulk user extension data
         in: body
         name: request
         required: true
@@ -1593,7 +1742,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Bulk extend users
+      summary: Bulk extend user expiration
       tags:
       - Bulk Operations
   /api/bulk/users/import:
@@ -2222,13 +2371,13 @@ paths:
       - Advanced Search
   /api/users:
     get:
-      description: Get a paginated list of users with filtering
+      description: Get a paginated list of users with comprehensive filtering options
       parameters:
-      - description: Filter by username
+      - description: Filter by username (supports partial match)
         in: query
         name: username
         type: string
-      - description: Filter by email
+      - description: Filter by email (supports partial match)
         in: query
         name: email
         type: string
@@ -2250,16 +2399,87 @@ paths:
         in: query
         name: groupName
         type: string
+      - description: Filter by enabled status
+        in: query
+        name: isEnabled
+        type: boolean
+      - description: Filter by access denial status
+        in: query
+        name: denyAccess
+        type: boolean
+      - description: Filter by MFA status
+        in: query
+        name: mfaEnabled
+        type: boolean
+      - description: Users expiring after date (YYYY-MM-DD)
+        in: query
+        name: userExpirationAfter
+        type: string
+      - description: Users expiring before date (YYYY-MM-DD)
+        in: query
+        name: userExpirationBefore
+        type: string
+      - default: true
+        description: Include expired users
+        in: query
+        name: includeExpired
+        type: boolean
+      - description: Users expiring within X days
+        in: query
+        name: expiringInDays
+        type: integer
+      - description: Filter by access control presence
+        in: query
+        name: hasAccessControl
+        type: boolean
+      - description: Filter by MAC address
+        in: query
+        name: macAddress
+        type: string
+      - description: Search across username, email, group
+        in: query
+        name: searchText
+        type: string
+      - default: username
+        description: Sort field
+        enum:
+        - username
+        - email
+        - authMethod
+        - role
+        - groupName
+        - userExpiration
+        in: query
+        name: sortBy
+        type: string
+      - default: asc
+        description: Sort order
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sortOrder
+        type: string
       - default: 1
         description: Page number
         in: query
         name: page
         type: integer
-      - default: 10
-        description: Items per page
+      - default: 20
+        description: Items per page (max 100)
         in: query
         name: limit
         type: integer
+      - default: false
+        description: Use exact matching instead of partial
+        in: query
+        name: exactMatch
+        type: boolean
+      - default: false
+        description: Case sensitive search
+        in: query
+        name: caseSensitive
+        type: boolean
       produces:
       - application/json
       responses:
@@ -2273,7 +2493,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List users
+      summary: List users with enhanced filtering
       tags:
       - Users
     post:

@@ -8,7 +8,9 @@ import (
 	"govpn/internal/infrastructure/xmlrpc"
 	"govpn/pkg/errors"
 	"govpn/pkg/logger"
+	"sort"
 	"strings"
+	"time"
 )
 
 type userRepositoryImpl struct {
@@ -115,7 +117,10 @@ func (r *userRepositoryImpl) List(ctx context.Context, filter *entities.UserFilt
 		}
 	}
 
-	// ✅ FIX: Apply pagination with proper offset calculation
+	// Apply sorting
+	r.sortUsers(filteredUsers, filter.SortBy, filter.SortOrder)
+
+	// Apply pagination with proper offset calculation
 	if filter.Limit > 0 {
 		// Calculate offset from page if not provided
 		offset := filter.Offset
@@ -149,23 +154,240 @@ func (r *userRepositoryImpl) List(ctx context.Context, filter *entities.UserFilt
 	return filteredUsers, nil
 }
 
+// Enhanced matchesFilter with comprehensive filtering support
 func (r *userRepositoryImpl) matchesFilter(user *entities.User, filter *entities.UserFilter) bool {
-	if filter.Username != "" && !strings.Contains(strings.ToLower(user.Username), strings.ToLower(filter.Username)) {
-		return false
+	// Basic filters (existing)
+	if filter.Username != "" {
+		if filter.ExactMatch {
+			if filter.CaseSensitive {
+				if user.Username != filter.Username {
+					return false
+				}
+			} else if strings.ToLower(user.Username) != strings.ToLower(filter.Username) {
+				return false
+			}
+		} else {
+			if filter.CaseSensitive {
+				if !strings.Contains(user.Username, filter.Username) {
+					return false
+				}
+			} else if !strings.Contains(strings.ToLower(user.Username), strings.ToLower(filter.Username)) {
+				return false
+			}
+		}
 	}
-	if filter.Email != "" && !strings.Contains(strings.ToLower(user.Email), strings.ToLower(filter.Email)) {
-		return false
+
+	if filter.Email != "" {
+		if filter.ExactMatch {
+			if filter.CaseSensitive {
+				if user.Email != filter.Email {
+					return false
+				}
+			} else if strings.ToLower(user.Email) != strings.ToLower(filter.Email) {
+				return false
+			}
+		} else {
+			if filter.CaseSensitive {
+				if !strings.Contains(user.Email, filter.Email) {
+					return false
+				}
+			} else if !strings.Contains(strings.ToLower(user.Email), strings.ToLower(filter.Email)) {
+				return false
+			}
+		}
 	}
+
 	if filter.AuthMethod != "" && user.AuthMethod != filter.AuthMethod {
 		return false
 	}
+
 	if filter.Role != "" && user.Role != filter.Role {
 		return false
 	}
+
 	if filter.GroupName != "" && user.GroupName != filter.GroupName {
 		return false
 	}
+
+	// NEW: Status filters
+	if filter.IsEnabled != nil {
+		userEnabled := user.DenyAccess != "true"
+		if *filter.IsEnabled != userEnabled {
+			return false
+		}
+	}
+
+	if filter.DenyAccess != nil {
+		userDenyAccess := user.DenyAccess == "true"
+		if *filter.DenyAccess != userDenyAccess {
+			return false
+		}
+	}
+
+	if filter.MFAEnabled != nil {
+		userMFAEnabled := user.MFA == "true"
+		if *filter.MFAEnabled != userMFAEnabled {
+			return false
+		}
+	}
+
+	// NEW: Expiration filters
+	if filter.UserExpirationAfter != nil || filter.UserExpirationBefore != nil || filter.ExpiringInDays != nil || (filter.IncludeExpired != nil && !*filter.IncludeExpired) {
+		if user.UserExpiration == "" {
+			return false // Skip users without expiration date
+		}
+
+		// Parse user expiration date (assuming DD/MM/YYYY format based on the DTO examples)
+		userExpTime, err := r.parseExpirationDate(user.UserExpiration)
+		if err != nil {
+			return false // Skip users with invalid expiration dates
+		}
+
+		if filter.UserExpirationAfter != nil && userExpTime.Before(*filter.UserExpirationAfter) {
+			return false
+		}
+
+		if filter.UserExpirationBefore != nil && userExpTime.After(*filter.UserExpirationBefore) {
+			return false
+		}
+
+		if filter.ExpiringInDays != nil {
+			daysUntilExp := int(time.Until(userExpTime).Hours() / 24)
+			if daysUntilExp > *filter.ExpiringInDays || daysUntilExp < 0 {
+				return false
+			}
+		}
+
+		// Include expired check
+		if filter.IncludeExpired != nil && !*filter.IncludeExpired {
+			if time.Now().After(userExpTime) {
+				return false // Exclude expired users
+			}
+		}
+	}
+
+	// NEW: Access control filter
+	if filter.HasAccessControl != nil {
+		hasAccessControl := len(user.AccessControl) > 0
+		if *filter.HasAccessControl != hasAccessControl {
+			return false
+		}
+	}
+
+	// NEW: MAC address filter
+	if filter.MacAddress != "" {
+		found := false
+		for _, mac := range user.MacAddresses {
+			if filter.ExactMatch {
+				if strings.EqualFold(mac, filter.MacAddress) {
+					found = true
+					break
+				}
+			} else {
+				if strings.Contains(strings.ToLower(mac), strings.ToLower(filter.MacAddress)) {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// NEW: Search text (across multiple fields)
+	if filter.SearchText != "" {
+		searchTerm := filter.SearchText
+		if !filter.CaseSensitive {
+			searchTerm = strings.ToLower(searchTerm)
+		}
+
+		fields := []string{user.Username, user.Email, user.GroupName}
+		if !filter.CaseSensitive {
+			for i := range fields {
+				fields[i] = strings.ToLower(fields[i])
+			}
+		}
+
+		found := false
+		for _, field := range fields {
+			if strings.Contains(field, searchTerm) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return false
+		}
+	}
+
 	return true
+}
+
+// NEW: Helper method to parse expiration date
+func (r *userRepositoryImpl) parseExpirationDate(dateStr string) (time.Time, error) {
+	// Try different date formats
+	formats := []string{
+		"02/01/2006", // DD/MM/YYYY (based on DTO examples)
+		"2006-01-02", // YYYY-MM-DD (ISO format)
+		"01/02/2006", // MM/DD/YYYY (US format)
+		"2006/01/02", // YYYY/MM/DD
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date: %s", dateStr)
+}
+
+// NEW: Sorting functionality
+func (r *userRepositoryImpl) sortUsers(users []*entities.User, sortBy, sortOrder string) {
+	if sortBy == "" {
+		return
+	}
+
+	sort.Slice(users, func(i, j int) bool {
+		var result bool
+
+		switch sortBy {
+		case "username":
+			result = strings.ToLower(users[i].Username) < strings.ToLower(users[j].Username)
+		case "email":
+			result = strings.ToLower(users[i].Email) < strings.ToLower(users[j].Email)
+		case "authMethod":
+			result = users[i].AuthMethod < users[j].AuthMethod
+		case "role":
+			result = users[i].Role < users[j].Role
+		case "groupName":
+			result = users[i].GroupName < users[j].GroupName
+		case "userExpiration":
+			// Handle empty dates and sort by parsed dates
+			dateI, errI := r.parseExpirationDate(users[i].UserExpiration)
+			dateJ, errJ := r.parseExpirationDate(users[j].UserExpiration)
+
+			if errI != nil && errJ != nil {
+				result = false // Both invalid, maintain order
+			} else if errI != nil {
+				result = false // Invalid dates go to end
+			} else if errJ != nil {
+				result = true // Valid dates come first
+			} else {
+				result = dateI.Before(dateJ)
+			}
+		default:
+			// Default to username sorting
+			result = strings.ToLower(users[i].Username) < strings.ToLower(users[j].Username)
+		}
+
+		if sortOrder == "desc" {
+			return !result
+		}
+		return result
+	})
 }
 
 func (r *userRepositoryImpl) ExistsByUsername(ctx context.Context, username string) (bool, error) {
