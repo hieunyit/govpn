@@ -330,7 +330,6 @@ func (c *UserClient) makeCreateUserRequest(user *entities.User) string {
 	buf.WriteString(`</struct></value></param>`)
 	buf.WriteString(`<param><value><boolean>0</boolean></value></param>`)
 	buf.WriteString(`</params></methodCall>`)
-
 	return buf.String()
 }
 

@@ -400,10 +400,10 @@ const docTemplate = `{
                 "tags": [
                     "Bulk Operations"
                 ],
-                "summary": "Bulk extend user expiration",
+                "summary": "Bulk extend users",
                 "parameters": [
                     {
-                        "description": "Bulk user extension data",
+                        "description": "Bulk user extend data",
                         "name": "request",
                         "in": "body",
                         "required": true,

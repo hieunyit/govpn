@@ -1,6 +1,8 @@
 package dto
 
-import "mime/multipart"
+import (
+	"mime/multipart"
+)
 
 // =================== BULK USER OPERATIONS ===================
 
@@ -135,11 +137,15 @@ type UserCSVRecord struct {
 	AccessControl  string `csv:"access_control,omitempty" example:"192.168.1.0/24,10.0.0.0/8"`
 }
 
-// GroupCSVRecord represents a group record in CSV format
+// GroupCSVRecord represents a group record in CSV format - UPDATED with new fields
 type GroupCSVRecord struct {
 	GroupName     string `csv:"group_name" example:"TEST_GROUP"`
 	AuthMethod    string `csv:"auth_method" example:"local"`
+	MFA           string `csv:"mfa" example:"true"`
+	Role          string `csv:"role" example:"User"`
 	AccessControl string `csv:"access_control,omitempty" example:"192.168.1.0/24,10.0.0.0/8"`
+	GroupSubnet   string `csv:"group_subnet,omitempty" example:"10.8.0.0/24"`
+	GroupRange    string `csv:"group_range,omitempty" example:"10.8.0.100-10.8.0.200"`
 }
 
 // =================== VALIDATION MESSAGES ===================
@@ -191,6 +197,13 @@ func (r BulkGroupActionsRequest) GetValidationErrors() map[string]string {
 }
 
 func (r ImportUsersRequest) GetValidationErrors() map[string]string {
+	return map[string]string{
+		"File.required": "File is required",
+		"Format.oneof":  "Format must be one of: csv, json, xlsx",
+	}
+}
+
+func (r ImportGroupsRequest) GetValidationErrors() map[string]string {
 	return map[string]string{
 		"File.required": "File is required",
 		"Format.oneof":  "Format must be one of: csv, json, xlsx",

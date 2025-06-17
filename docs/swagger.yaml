@@ -1574,7 +1574,7 @@ paths:
       - application/json
       description: Extend expiration date for multiple users
       parameters:
-      - description: Bulk user extension data
+      - description: Bulk user extend data
         in: body
         name: request
         required: true
@@ -1593,7 +1593,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Bulk extend user expiration
+      summary: Bulk extend users
       tags:
       - Bulk Operations
   /api/bulk/users/import:
