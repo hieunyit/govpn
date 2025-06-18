@@ -40,14 +40,13 @@ jwt:
 
 # Redis Configuration
 redis:
-  enabled: false          # Set to true to enable Redis caching
+  enabled: true           # ✅ CHANGED FROM false TO true
   host: "localhost"
   port: 6379
   password: ""            # Leave empty if no password
   database: 0             # Database 0 for development
   poolSize: 10
-  ttl: "10m"              # Default cache TTL
-
+  ttl: "10m"     
 # Security Settings
 security:
   # Enable additional security headers

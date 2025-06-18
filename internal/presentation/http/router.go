@@ -224,8 +224,17 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 			// =================== NEW: REDIS CACHE MANAGEMENT ROUTES ===================
 			cache := api.Group("/cache")
 			{
+				// Basic cache operations
 				cache.GET("/status", r.cacheHandler.GetCacheStatus)
 				cache.DELETE("/flush", r.cacheHandler.FlushCache)
+
+				// ✅ NEW: Enhanced cache operations
+				cache.GET("/stats", r.cacheHandler.GetCacheStats)
+				cache.POST("/warmup", r.cacheHandler.WarmUpCache)
+				cache.GET("/health", r.cacheHandler.CacheHealthCheck)
+
+				// ✅ NEW: Selective cache flushing
+				cache.DELETE("/flush/category", r.cacheHandler.FlushCacheCategory)
 			}
 		}
 	}

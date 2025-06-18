@@ -1483,14 +1483,14 @@ info:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: OpenVPN Access Server Management API with Bulk Operations and Advanced
-    Search
+  description: OpenVPN Access Server Management API with Bulk Operations, Advanced
+    Search, and Comprehensive Redis Caching
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   termsOfService: http://swagger.io/terms/
-  title: GoVPN API Enhanced
-  version: 1.1.0
+  title: GoVPN API Enhanced with Advanced Redis Caching
+  version: 1.2.0
 paths:
   /api/bulk/groups/actions:
     post:
@@ -1816,6 +1816,128 @@ paths:
       summary: Export user template
       tags:
       - Bulk Operations
+  /api/cache/flush:
+    delete:
+      description: Clear all cached data from Redis
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Flush cache
+      tags:
+      - Cache
+  /api/cache/flush/category:
+    delete:
+      description: Clear specific categories of cached data
+      parameters:
+      - description: Cache category (users|groups|config|filters|expirations|all)
+        in: query
+        name: category
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Flush specific cache categories
+      tags:
+      - Cache
+  /api/cache/health:
+    get:
+      description: Perform comprehensive cache health check
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Check cache health
+      tags:
+      - Cache
+  /api/cache/stats:
+    get:
+      description: Get detailed cache statistics and metrics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get cache statistics
+      tags:
+      - Cache
+  /api/cache/status:
+    get:
+      description: Get Redis cache status, connection health, and statistics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get cache status
+      tags:
+      - Cache
+  /api/cache/warmup:
+    post:
+      description: Pre-load frequently accessed data into cache
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Warm up cache
+      tags:
+      - Cache
   /api/config/network:
     get:
       description: Get comprehensive network configuration including client networks,

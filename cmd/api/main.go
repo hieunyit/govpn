@@ -1,6 +1,6 @@
-// @title           GoVPN API Enhanced with Redis Caching
+// @title           GoVPN API Enhanced with Advanced Redis Caching
 // @version         1.2.0
-// @description     OpenVPN Access Server Management API with Bulk Operations, Advanced Search, and Redis Caching
+// @description     OpenVPN Access Server Management API with Bulk Operations, Advanced Search, and Comprehensive Redis Caching
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -69,8 +69,8 @@ func main() {
 	logger.Init(loggerConfig)
 
 	// Log startup information
-	logger.Log.Info("Starting GoVPN API Enhanced v1.1.0")
-	logger.Log.Info("Features: Redis Caching, Enhanced Performance")
+	logger.Log.Info("Starting GoVPN API Enhanced v1.3.0")
+	logger.Log.Info("Features: Advanced Redis Caching, Enhanced Performance, Filtered Queries")
 
 	// Log JWT configuration mode
 	if cfg.JWT.UseRSA {
@@ -112,24 +112,27 @@ func main() {
 	}
 	ldapClient := ldap.NewClient(ldapConfig)
 
-	// Initialize repositories
+	// Initialize base repositories
 	baseUserRepo := xmlrpcRepositories.NewUserRepository(xmlrpcClient)
 	baseGroupRepo := xmlrpcRepositories.NewGroupRepository(xmlrpcClient)
+	baseConfigRepo := xmlrpcRepositories.NewConfigRepository(xmlrpcClient)
 	disconnectRepo := xmlrpcRepositories.NewDisconnectRepository(xmlrpcClient)
 	vpnStatusRepo := xmlrpcRepositories.NewVPNStatusRepository(xmlrpcClient)
-	configRepo := xmlrpcRepositories.NewConfigRepository(xmlrpcClient)
 
-	// Wrap repositories with caching if enabled
+	// ✅ ENHANCED: Wrap repositories with caching if enabled
 	var userRepo repositories.UserRepository
 	var groupRepo repositories.GroupRepository
+	var configRepo repositories.ConfigRepository
 
 	if cfg.Redis.Enabled {
 		userRepo = xmlrpcRepositories.NewCachedUserRepository(baseUserRepo, redisClient)
 		groupRepo = xmlrpcRepositories.NewCachedGroupRepository(baseGroupRepo, redisClient)
-		logger.Log.Info("Repositories wrapped with Redis caching")
+		configRepo = xmlrpcRepositories.NewCachedConfigRepository(baseConfigRepo, redisClient) // ✅ NEW
+		logger.Log.Info("All repositories wrapped with Redis caching (including config)")
 	} else {
 		userRepo = baseUserRepo
 		groupRepo = baseGroupRepo
+		configRepo = baseConfigRepo
 		logger.Log.Info("Using direct repositories without caching")
 	}
 
@@ -139,7 +142,7 @@ func main() {
 	groupUsecase := usecases.NewGroupUsecase(groupRepo, configRepo)
 	disconnectUsecase := usecases.NewDisconnectUsecase(userRepo, disconnectRepo, vpnStatusRepo)
 	vpnStatusUsecase := usecases.NewVPNStatusUsecase(vpnStatusRepo)
-	configUsecase := usecases.NewConfigUsecase(configRepo)
+	configUsecase := usecases.NewConfigUsecase(configRepo) // ✅ Now using cached config repo
 	bulkUsecase := usecases.NewBulkUsecase(userRepo, groupRepo, ldapClient)
 	searchUsecase := usecases.NewSearchUsecase(userRepo, groupRepo)
 
@@ -157,7 +160,7 @@ func main() {
 	disconnectHandler := handlers.NewDisconnectHandler(disconnectUsecase)
 	configHandler := handlers.NewConfigHandler(configUsecase)
 
-	// NEW: Initialize cache and system handlers
+	// ✅ ENHANCED: Initialize cache handler
 	cacheHandler := handlers.NewCacheHandler(redisClient)
 
 	// Initialize router with all handlers
@@ -172,11 +175,29 @@ func main() {
 		vpnStatusHandler,
 		disconnectHandler,
 		configHandler,
-		cacheHandler, // NEW: Cache handler
+		cacheHandler,
 	)
 
 	// Setup routes
 	ginEngine := router.SetupRoutes()
+
+	// ✅ NEW: Warm up cache if enabled
+	if cfg.Redis.Enabled {
+		go func() {
+			logger.Log.Info("Starting cache warmup in background")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Warm up config cache (most important)
+			if cachedConfigRepo, ok := configRepo.(*xmlrpcRepositories.CachedConfigRepository); ok {
+				if err := cachedConfigRepo.WarmupCache(ctx); err != nil {
+					logger.Log.WithError(err).Warn("Failed to warm up config cache")
+				}
+			}
+
+			logger.Log.Info("Cache warmup completed")
+		}()
+	}
 
 	// Create HTTP server
 	server := &http.Server{
@@ -198,6 +219,10 @@ func main() {
 	}()
 
 	logger.Log.WithField("port", cfg.Server.Port).Info("GoVPN API Enhanced server started successfully")
+	if cfg.Redis.Enabled {
+		logger.Log.Info("🚀 Advanced caching enabled for all APIs including filters and config")
+		logger.Log.Info("📊 Cache TTL settings: Users=10m, Groups=10m, Filters=2m, Config=30m, Expirations=1m")
+	}
 
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
