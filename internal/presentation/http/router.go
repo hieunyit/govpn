@@ -22,6 +22,7 @@ type RouterUpdated struct {
 	vpnStatusHandler  *handlers.VPNStatusHandler
 	disconnectHandler *handlers.DisconnectHandler
 	configHandler     *handlers.ConfigHandler
+	cacheHandler      *handlers.CacheHandler // NEW: Cache handler for Redis
 }
 
 func NewRouterUpdated(
@@ -35,6 +36,7 @@ func NewRouterUpdated(
 	vpnStatusHandler *handlers.VPNStatusHandler,
 	disconnectHandler *handlers.DisconnectHandler,
 	configHandler *handlers.ConfigHandler, // NEW: Config handler injection
+	cacheHandler *handlers.CacheHandler, // NEW: Cache handler injection
 
 ) *RouterUpdated {
 	return &RouterUpdated{
@@ -48,6 +50,7 @@ func NewRouterUpdated(
 		vpnStatusHandler:  vpnStatusHandler,
 		disconnectHandler: disconnectHandler,
 		configHandler:     configHandler, // NEW
+		cacheHandler:      cacheHandler,  // NEW
 	}
 }
 
@@ -201,10 +204,14 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 					saved.DELETE("/:searchId", r.searchHandler.DeleteSavedSearch)
 				}
 			}
+
+			// =================== VPN STATUS ROUTES ===================
 			vpn := api.Group("/vpn")
 			{
 				vpn.GET("/status", r.vpnStatusHandler.GetVPNStatus)
 			}
+
+			// =================== CONFIG ROUTES ===================
 			config := api.Group("/config")
 			{
 				server := config.Group("/server")
@@ -212,6 +219,13 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 					server.GET("/info", r.configHandler.GetServerInfo)
 				}
 				config.GET("/network", r.configHandler.GetNetworkConfig)
+			}
+
+			// =================== NEW: REDIS CACHE MANAGEMENT ROUTES ===================
+			cache := api.Group("/cache")
+			{
+				cache.GET("/status", r.cacheHandler.GetCacheStatus)
+				cache.DELETE("/flush", r.cacheHandler.FlushCache)
 			}
 		}
 	}
@@ -229,6 +243,7 @@ func (r *RouterUpdated) healthCheck(c *gin.Context) {
 			"advanced-search",
 			"file-import",
 			"search-analytics",
+			"redis-caching", // NEW: Redis caching feature
 		},
 	})
 }
@@ -238,7 +253,7 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 	handlers.RespondWithSuccess(c, 200, gin.H{
 		"service":     "GoVPN API",
 		"version":     "1.1.0", // Updated version
-		"description": "OpenVPN Access Server Management API with Bulk Operations and Advanced Search",
+		"description": "OpenVPN Access Server Management API with Bulk Operations, Advanced Search, and Redis Caching",
 		"features": gin.H{
 			"bulk_operations": gin.H{
 				"description":       "Create, manage, and import multiple users/groups",
@@ -253,6 +268,13 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 				"features": []string{
 					"date_ranges", "status_filters", "pattern_matching",
 					"saved_searches", "autocomplete", "export",
+				},
+			},
+			"redis_caching": gin.H{
+				"description": "Redis-based caching for improved performance",
+				"features": []string{
+					"user_caching", "group_caching", "auto_invalidation",
+					"cache_management", "fallback_support",
 				},
 			},
 		},
@@ -322,6 +344,11 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 			"config": gin.H{
 				"server_info":  "GET /api/config/server/info",
 				"network_info": "GET /api/config/network",
+			},
+			// NEW: Cache management endpoints
+			"cache_management": gin.H{
+				"get_status": "GET /api/cache/status",
+				"flush_all":  "DELETE /api/cache/flush",
 			},
 		},
 		"documentation": "/swagger/index.html",

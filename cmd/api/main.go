@@ -1,6 +1,6 @@
-// @title           GoVPN API Enhanced
-// @version         1.1.0
-// @description     OpenVPN Access Server Management API with Bulk Operations and Advanced Search
+// @title           GoVPN API Enhanced with Redis Caching
+// @version         1.2.0
+// @description     OpenVPN Access Server Management API with Bulk Operations, Advanced Search, and Redis Caching
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -31,9 +31,11 @@ import (
 
 	"govpn/internal/application/handlers"
 	"govpn/internal/application/middleware"
+	"govpn/internal/domain/repositories"
 	"govpn/internal/domain/usecases"
 	"govpn/internal/infrastructure/ldap"
-	"govpn/internal/infrastructure/repositories"
+	"govpn/internal/infrastructure/redis"
+	xmlrpcRepositories "govpn/internal/infrastructure/repositories"
 	"govpn/internal/infrastructure/xmlrpc"
 	httpRouter "govpn/internal/presentation/http"
 	"govpn/pkg/config"
@@ -68,7 +70,7 @@ func main() {
 
 	// Log startup information
 	logger.Log.Info("Starting GoVPN API Enhanced v1.1.0")
-	logger.Log.Info("New Features: Bulk Operations, Advanced Search, File Import/Export")
+	logger.Log.Info("Features: Redis Caching, Enhanced Performance")
 
 	// Log JWT configuration mode
 	if cfg.JWT.UseRSA {
@@ -82,6 +84,15 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to initialize JWT service:", err)
 	}
+
+	// Initialize Redis client
+	redisClient, err := redis.NewClient(cfg.Redis)
+	if err != nil {
+		log.Fatal("Failed to initialize Redis client:", err)
+	}
+	defer redisClient.Close()
+
+	logger.Log.WithField("enabled", cfg.Redis.Enabled).Info("Redis client initialized")
 
 	// Initialize infrastructure
 	xmlrpcConfig := xmlrpc.Config{
@@ -102,11 +113,25 @@ func main() {
 	ldapClient := ldap.NewClient(ldapConfig)
 
 	// Initialize repositories
-	userRepo := repositories.NewUserRepository(xmlrpcClient)
-	groupRepo := repositories.NewGroupRepository(xmlrpcClient)
-	disconnectRepo := repositories.NewDisconnectRepository(xmlrpcClient)
-	vpnStatusRepo := repositories.NewVPNStatusRepository(xmlrpcClient)
-	configRepo := repositories.NewConfigRepository(xmlrpcClient)
+	baseUserRepo := xmlrpcRepositories.NewUserRepository(xmlrpcClient)
+	baseGroupRepo := xmlrpcRepositories.NewGroupRepository(xmlrpcClient)
+	disconnectRepo := xmlrpcRepositories.NewDisconnectRepository(xmlrpcClient)
+	vpnStatusRepo := xmlrpcRepositories.NewVPNStatusRepository(xmlrpcClient)
+	configRepo := xmlrpcRepositories.NewConfigRepository(xmlrpcClient)
+
+	// Wrap repositories with caching if enabled
+	var userRepo repositories.UserRepository
+	var groupRepo repositories.GroupRepository
+
+	if cfg.Redis.Enabled {
+		userRepo = xmlrpcRepositories.NewCachedUserRepository(baseUserRepo, redisClient)
+		groupRepo = xmlrpcRepositories.NewCachedGroupRepository(baseGroupRepo, redisClient)
+		logger.Log.Info("Repositories wrapped with Redis caching")
+	} else {
+		userRepo = baseUserRepo
+		groupRepo = baseGroupRepo
+		logger.Log.Info("Using direct repositories without caching")
+	}
 
 	// Initialize use cases with shared JWT service
 	authUsecase := usecases.NewAuthUsecaseWithJWTService(userRepo, ldapClient, jwtService)
@@ -115,7 +140,6 @@ func main() {
 	disconnectUsecase := usecases.NewDisconnectUsecase(userRepo, disconnectRepo, vpnStatusRepo)
 	vpnStatusUsecase := usecases.NewVPNStatusUsecase(vpnStatusRepo)
 	configUsecase := usecases.NewConfigUsecase(configRepo)
-	// NEW: Initialize bulk and search use cases
 	bulkUsecase := usecases.NewBulkUsecase(userRepo, groupRepo, ldapClient)
 	searchUsecase := usecases.NewSearchUsecase(userRepo, groupRepo)
 
@@ -127,111 +151,81 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authUsecase)
 	userHandler := handlers.NewUserHandler(userUsecase, xmlrpcClient)
 	groupHandler := handlers.NewGroupHandler(groupUsecase, configUsecase, xmlrpcClient)
-
-	// NEW: Initialize bulk and search handlers
 	bulkHandler := handlers.NewBulkHandler(bulkUsecase, xmlrpcClient)
 	searchHandler := handlers.NewSearchHandler(searchUsecase)
 	vpnStatusHandler := handlers.NewVPNStatusHandler(vpnStatusUsecase)
 	disconnectHandler := handlers.NewDisconnectHandler(disconnectUsecase)
 	configHandler := handlers.NewConfigHandler(configUsecase)
-	// Initialize router with new handlers
+
+	// NEW: Initialize cache and system handlers
+	cacheHandler := handlers.NewCacheHandler(redisClient)
+
+	// Initialize router with all handlers
 	router := httpRouter.NewRouterUpdated(
 		authHandler,
 		userHandler,
 		groupHandler,
-		bulkHandler,   // NEW: Bulk operations handler
-		searchHandler, // NEW: Advanced search handler
+		bulkHandler,
+		searchHandler,
 		authMiddleware,
 		corsMiddleware,
 		vpnStatusHandler,
 		disconnectHandler,
 		configHandler,
+		cacheHandler, // NEW: Cache handler
 	)
 
-	// Start server
+	// Setup routes
+	ginEngine := router.SetupRoutes()
+
+	// Create HTTP server
 	server := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      router.SetupRoutes(),
-		ReadTimeout:  30 * time.Second, // Increased for file uploads
-		WriteTimeout: 30 * time.Second, // Increased for bulk operations
-		IdleTimeout:  60 * time.Second,
+		Addr:    ":" + cfg.Server.Port,
+		Handler: ginEngine,
+		// Security timeouts
+		ReadTimeout:       time.Duration(cfg.Server.Timeout) * time.Second,
+		WriteTimeout:      time.Duration(cfg.Server.Timeout) * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
-	// Graceful shutdown
+	// Start server in a goroutine
 	go func() {
-		logger.Log.Info("Server starting on port " + cfg.Server.Port)
-		logger.Log.Info("Swagger UI available at: http://localhost:" + cfg.Server.Port + "/swagger/index.html")
-
-		// Log feature information
-		logger.Log.Info("✅ Basic User/Group Management")
-		logger.Log.Info("✅ RSA256 JWT Authentication")
-		logger.Log.Info("🆕 Bulk Operations:")
-		logger.Log.Info("   - Bulk user creation (up to 100 users)")
-		logger.Log.Info("   - Bulk group creation (up to 50 groups)")
-		logger.Log.Info("   - Bulk actions (enable/disable/reset-otp)")
-		logger.Log.Info("   - Bulk expiration extension")
-		logger.Log.Info("🆕 File Import/Export:")
-		logger.Log.Info("   - CSV/JSON/XLSX import with validation")
-		logger.Log.Info("   - Template generation")
-		logger.Log.Info("   - Dry-run mode for testing")
-		logger.Log.Info("🆕 Advanced Search:")
-		logger.Log.Info("   - Complex filters and sorting")
-		logger.Log.Info("   - Saved searches")
-		logger.Log.Info("   - Search suggestions and autocomplete")
-		logger.Log.Info("   - Search analytics and statistics")
-		logger.Log.Info("   - Export search results")
-
-		if cfg.JWT.UseRSA {
-			logger.Log.Info("Using RSA256 JWT tokens for enhanced security")
-		} else {
-			logger.Log.Warn("Using HMAC256 JWT tokens - consider upgrading to RSA256 for production")
-		}
-
-		// Log new API endpoints
-		logger.Log.Info("🔗 New API Endpoints:")
-		logger.Log.Info("Bulk Operations:")
-		logger.Log.Info("  POST /api/bulk/users/create")
-		logger.Log.Info("  POST /api/bulk/users/actions")
-		logger.Log.Info("  POST /api/bulk/users/extend")
-		logger.Log.Info("  POST /api/bulk/users/import")
-		logger.Log.Info("  GET  /api/bulk/users/template")
-		logger.Log.Info("  POST /api/bulk/groups/create")
-		logger.Log.Info("  POST /api/bulk/groups/actions")
-		logger.Log.Info("  POST /api/bulk/groups/import")
-		logger.Log.Info("  GET  /api/bulk/groups/template")
-		logger.Log.Info("Advanced Search:")
-		logger.Log.Info("  POST /api/search/users")
-		logger.Log.Info("  POST /api/search/groups")
-		logger.Log.Info("  GET  /api/search/quick")
-		logger.Log.Info("  POST /api/search/suggestions")
-		logger.Log.Info("  POST /api/search/export")
-		logger.Log.Info("  GET  /api/search/analytics")
-		logger.Log.Info("  POST /api/search/saved")
-		logger.Log.Info("  GET  /api/search/saved")
-
+		logger.Log.WithField("port", cfg.Server.Port).Info("Server starting")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log.Fatal("Server failed to start:", err)
+			logger.Log.WithError(err).Fatal("Server failed to start")
 		}
 	}()
 
-	// Wait for interrupt signal
+	logger.Log.WithField("port", cfg.Server.Port).Info("GoVPN API Enhanced server started successfully")
+
+	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Log.Info("Server shutting down...")
+	logger.Log.Info("Shutting down server...")
 
+	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Shutdown HTTP server
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.Fatal("Server forced to shutdown:", err)
+		logger.Log.WithError(err).Error("Server forced to shutdown")
+		return
 	}
 
-	logger.Log.Info("GoVPN API Enhanced v1.1.0 exited gracefully")
+	// Close Redis connection
+	if err := redisClient.Close(); err != nil {
+		logger.Log.WithError(err).Error("Failed to close Redis connection")
+	} else {
+		logger.Log.Info("Redis connection closed successfully")
+	}
+
+	logger.Log.Info("Server exited successfully")
 }
 
-// initializeJWTService creates a single JWT service instance to be shared
 func initializeJWTService(jwtConfig config.JWTConfig) (JWTServiceInterface, error) {
 	var jwtService JWTServiceInterface
 

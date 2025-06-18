@@ -13,6 +13,7 @@ type Config struct {
 	LDAP    LDAPConfig    `mapstructure:"ldap"`
 	Logger  LoggerConfig  `mapstructure:"logger"`
 	JWT     JWTConfig     `mapstructure:"jwt"`
+	Redis   RedisConfig   `mapstructure:"redis"` // NEW: Redis configuration
 }
 
 type ServerConfig struct {
@@ -53,6 +54,17 @@ type JWTConfig struct {
 	RefreshPrivateKey          string        `mapstructure:"refreshPrivateKey"`
 	AccessTokenExpireDuration  time.Duration `mapstructure:"accessTokenExpireDuration"`
 	RefreshTokenExpireDuration time.Duration `mapstructure:"refreshTokenExpireDuration"`
+}
+
+// Redis configuration
+type RedisConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	Host     string        `mapstructure:"host"`
+	Port     int           `mapstructure:"port"`
+	Password string        `mapstructure:"password"`
+	Database int           `mapstructure:"database"`
+	PoolSize int           `mapstructure:"poolSize"`
+	TTL      time.Duration `mapstructure:"ttl"`
 }
 
 func Load() (*Config, error) {
@@ -115,4 +127,13 @@ func setDefaults() {
 	// Legacy HMAC defaults (for backward compatibility)
 	viper.SetDefault("jwt.secret", "default-hmac-secret-change-in-production")
 	viper.SetDefault("jwt.refreshSecret", "default-refresh-secret-change-in-production")
+
+	// Redis defaults
+	viper.SetDefault("redis.enabled", false)
+	viper.SetDefault("redis.host", "localhost")
+	viper.SetDefault("redis.port", 6379)
+	viper.SetDefault("redis.password", "")
+	viper.SetDefault("redis.database", 0)
+	viper.SetDefault("redis.poolSize", 10)
+	viper.SetDefault("redis.ttl", 10*time.Minute)
 }

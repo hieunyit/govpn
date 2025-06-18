@@ -38,6 +38,16 @@ jwt:
   secret: "AsimGroup-RSA-Migration-Change-This-Secret"
   refreshSecret: "AsimGroupRefresh-RSA-Migration-Change-This-Secret"
 
+# Redis Configuration
+redis:
+  enabled: false          # Set to true to enable Redis caching
+  host: "localhost"
+  port: 6379
+  password: ""            # Leave empty if no password
+  database: 0             # Database 0 for development
+  poolSize: 10
+  ttl: "10m"              # Default cache TTL
+
 # Security Settings
 security:
   # Enable additional security headers
@@ -94,3 +104,12 @@ features:
   
   # Enable audit logging
   enableAuditLogging: true
+  
+  # NEW: Enable Redis caching features
+  enableRedisCaching: true
+  
+  # Enable cache warming on startup
+  enableCacheWarmup: true
+  
+  # Enable cache statistics endpoint
+  enableCacheStats: true
