@@ -215,6 +215,13 @@ func (r *CachedUserRepository) ExistsByUsername(ctx context.Context, username st
 		return true, nil
 	}
 
+	// Check negative cache before hitting repository
+	negativeKey := fmt.Sprintf("user_not_exists:%s", username)
+	var notExists bool
+	if err := r.cache.Get(ctx, negativeKey, &notExists); err == nil && notExists {
+		return false, nil
+	}
+
 	// Cache miss - check repository
 	exists, err := r.repo.ExistsByUsername(ctx, username)
 	if err != nil {
@@ -223,8 +230,10 @@ func (r *CachedUserRepository) ExistsByUsername(ctx context.Context, username st
 
 	// 🔥 Cache negative results briefly to prevent repeated DB queries
 	if !exists {
-		negativeKey := fmt.Sprintf("user_not_exists:%s", username)
-		r.cache.SetAsync(ctx, negativeKey, false, 1*time.Minute)
+		r.cache.SetAsync(ctx, negativeKey, true, 1*time.Minute)
+	} else {
+		// remove stale negative entry if user exists
+		r.cache.DelAsync(ctx, negativeKey)
 	}
 
 	return exists, nil
@@ -441,4 +450,17 @@ func (r *CachedUserRepository) isEmptyFilter(filter *entities.UserFilter) bool {
 		// Don't check pagination fields for emptiness
 		!filter.ExactMatch &&
 		!filter.CaseSensitive
+}
+
+// WarmupCache preloads commonly accessed users into cache
+func (r *CachedUserRepository) WarmupCache(ctx context.Context) error {
+	users, err := r.repo.List(ctx, &entities.UserFilter{Limit: 100})
+	if err != nil {
+		return err
+	}
+	r.cache.SetAsync(ctx, "users:list", users, redis.ListTTL)
+	for _, u := range users {
+		r.cache.SetAsync(ctx, r.getUserKey(u.Username), u, redis.UserTTL)
+	}
+	return nil
 }
