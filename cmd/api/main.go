@@ -160,8 +160,8 @@ func main() {
 	disconnectHandler := handlers.NewDisconnectHandler(disconnectUsecase)
 	configHandler := handlers.NewConfigHandler(configUsecase)
 
-	// ✅ ENHANCED: Initialize cache handler
-	cacheHandler := handlers.NewCacheHandler(redisClient)
+	// ✅ ENHANCED: Initialize cache handler with repositories
+	cacheHandler := handlers.NewCacheHandler(redisClient, userRepo, groupRepo, configRepo)
 
 	// Initialize router with all handlers
 	router := httpRouter.NewRouterUpdated(

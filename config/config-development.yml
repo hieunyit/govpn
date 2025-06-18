@@ -112,3 +112,4 @@ features:
   
   # Enable cache statistics endpoint
   enableCacheStats: true
+

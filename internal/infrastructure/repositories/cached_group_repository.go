@@ -214,6 +214,13 @@ func (r *CachedGroupRepository) ExistsByName(ctx context.Context, groupName stri
 		return true, nil
 	}
 
+	// Check negative cache first
+	negativeKey := fmt.Sprintf("group_not_exists:%s", groupName)
+	var notExists bool
+	if err := r.cache.Get(ctx, negativeKey, &notExists); err == nil && notExists {
+		return false, nil
+	}
+
 	// Cache miss - check repository
 	exists, err := r.repo.ExistsByName(ctx, groupName)
 	if err != nil {
@@ -222,8 +229,9 @@ func (r *CachedGroupRepository) ExistsByName(ctx context.Context, groupName stri
 
 	// 🔥 Cache negative results briefly to prevent repeated DB queries
 	if !exists {
-		negativeKey := fmt.Sprintf("group_not_exists:%s", groupName)
-		r.cache.SetAsync(ctx, negativeKey, false, 1*time.Minute)
+		r.cache.SetAsync(ctx, negativeKey, true, 1*time.Minute)
+	} else {
+		r.cache.DelAsync(ctx, negativeKey)
 	}
 
 	return exists, nil
@@ -328,4 +336,20 @@ func (r *CachedGroupRepository) isEmptyFilter(filter *entities.GroupFilter) bool
 		filter.IsEnabled == nil &&
 		filter.Limit == 0 &&
 		filter.Offset == 0
+}
+
+// WarmupCache preloads commonly accessed groups into cache
+func (r *CachedGroupRepository) WarmupCache(ctx context.Context) error {
+	groups, err := r.repo.List(ctx, &entities.GroupFilter{Limit: 100})
+	if err != nil {
+		return err
+	}
+
+	kvs := make([]redis.KeyValue, 0, len(groups)+1)
+	kvs = append(kvs, redis.KeyValue{Key: "groups:list", Value: groups, TTL: redis.GroupTTL})
+	for _, g := range groups {
+		kvs = append(kvs, redis.KeyValue{Key: r.getGroupKey(g.GroupName), Value: g, TTL: redis.GroupTTL})
+	}
+
+	return r.cache.SetMultiple(ctx, kvs)
 }

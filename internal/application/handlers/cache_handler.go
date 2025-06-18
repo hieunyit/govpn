@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
+	"govpn/internal/domain/repositories"
 	"govpn/internal/infrastructure/redis"
 	"govpn/pkg/logger"
 
@@ -11,12 +13,18 @@ import (
 )
 
 type CacheHandler struct {
-	cache *redis.Client
+	cache      *redis.Client
+	userRepo   repositories.UserRepository
+	groupRepo  repositories.GroupRepository
+	configRepo repositories.ConfigRepository
 }
 
-func NewCacheHandler(cache *redis.Client) *CacheHandler {
+func NewCacheHandler(cache *redis.Client, userRepo repositories.UserRepository, groupRepo repositories.GroupRepository, configRepo repositories.ConfigRepository) *CacheHandler {
 	return &CacheHandler{
-		cache: cache,
+		cache:      cache,
+		userRepo:   userRepo,
+		groupRepo:  groupRepo,
+		configRepo: configRepo,
 	}
 }
 
@@ -300,13 +308,33 @@ func (h *CacheHandler) WarmUpCache(c *gin.Context) {
 
 	start := time.Now()
 
-	// ✅ TODO: In a real implementation, you would warm up cache by:
-	// 1. Loading commonly accessed users/groups
-	// 2. Pre-populating config data
-	// 3. Caching frequently used lists
-	// For now, just simulate successful warmup
-
+	err := h.cache.WarmCache(c.Request.Context(), func(ctx context.Context) error {
+		if w, ok := h.userRepo.(interface{ WarmupCache(context.Context) error }); ok {
+			if err := w.WarmupCache(ctx); err != nil {
+				return err
+			}
+		}
+		if w, ok := h.groupRepo.(interface{ WarmupCache(context.Context) error }); ok {
+			if err := w.WarmupCache(ctx); err != nil {
+				return err
+			}
+		}
+		if w, ok := h.configRepo.(interface{ WarmupCache(context.Context) error }); ok {
+			if err := w.WarmupCache(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	duration := time.Since(start)
+	if err != nil {
+		logger.Log.WithError(err).Warn("Cache warmup encountered errors")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
 
 	logger.Log.WithField("duration", duration).Info("Cache warmup completed")
 	c.JSON(http.StatusOK, gin.H{
