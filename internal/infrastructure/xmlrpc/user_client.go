@@ -84,10 +84,13 @@ func (c *UserClient) ExistsByEmail(email string) (bool, error) {
 	if !c.isSuccessResponse(string(body)) {
 		return false, fmt.Errorf("get email failed: %s", string(body))
 	}
+
 	if strings.Contains(string(body), email) {
 		return true, nil
 	}
-	return false, fmt.Errorf("email not found: %s", email)
+
+	// Treat missing email as not found without error
+	return false, nil
 }
 
 func (c *UserClient) GetAllUsers() ([]*entities.User, error) {

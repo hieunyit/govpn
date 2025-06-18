@@ -395,7 +395,10 @@ func (r *userRepositoryImpl) ExistsByUsername(ctx context.Context, username stri
 
 	_, err := r.userClient.GetUser(username)
 	if err != nil {
-		return false, nil
+		if strings.Contains(err.Error(), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check user existence: %w", err)
 	}
 
 	return true, nil
@@ -404,12 +407,12 @@ func (r *userRepositoryImpl) ExistsByUsername(ctx context.Context, username stri
 func (r *userRepositoryImpl) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	logger.Log.WithField("email", email).Debug("Checking if user exists")
 
-	_, err := r.userClient.ExistsByEmail(email)
+	exists, err := r.userClient.ExistsByEmail(email)
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("failed to check email existence: %w", err)
 	}
 
-	return true, nil
+	return exists, nil
 }
 
 func (r *userRepositoryImpl) Enable(ctx context.Context, username string) error {

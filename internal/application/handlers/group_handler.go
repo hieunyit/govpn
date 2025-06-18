@@ -88,7 +88,6 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		effectiveGroupRange = []string{}
 	}
 
-
 	if err := h.validateGroupSubnetAndRange(c.Request.Context(), effectiveGroupSubnet, effectiveGroupRange); err != nil {
 		RespondWithError(c, errors.BadRequest(err.Error(), err))
 		return
@@ -204,6 +203,13 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 	if err := validator.Validate(&req); err != nil {
 		logger.Log.WithError(err).Error("Update group request validation failed")
 		RespondWithValidationError(c, err)
+		return
+	}
+
+	// Reject empty update payloads
+	if req.AccessControl == nil && req.MFA == nil && req.Role == "" &&
+		req.DenyAccess == nil && req.GroupSubnet == nil && req.GroupRange == nil {
+		RespondWithError(c, errors.BadRequest("No update fields provided", nil))
 		return
 	}
 
