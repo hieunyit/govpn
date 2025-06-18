@@ -6,6 +6,7 @@ import (
 	"govpn/internal/domain/repositories"
 	"govpn/internal/infrastructure/redis"
 	"govpn/pkg/logger"
+	"time"
 
 	redisLib "github.com/redis/go-redis/v9"
 )
@@ -22,7 +23,7 @@ func NewCachedConfigRepository(repo repositories.ConfigRepository, cache *redis.
 	}
 }
 
-// ✅ NEW: GetServerInfo with caching
+// ✅ ENHANCED: GetServerInfo with caching + async updates
 func (r *CachedConfigRepository) GetServerInfo(ctx context.Context) (*entities.ServerInfo, error) {
 	// Try cache first
 	cacheKey := r.cache.GenerateConfigKey("server_info")
@@ -41,17 +42,14 @@ func (r *CachedConfigRepository) GetServerInfo(ctx context.Context) (*entities.S
 		return nil, err
 	}
 
-	// Cache the result with long TTL (config data rarely changes)
-	if cacheErr := r.cache.SetWithTTL(ctx, cacheKey, serverInfo, redis.ConfigTTL); cacheErr != nil {
-		logger.Log.WithError(cacheErr).Warn("Failed to cache server info")
-	} else {
-		logger.Log.WithField("ttl", redis.ConfigTTL).Debug("Server info cached")
-	}
+	// 🔥 Async caching with long TTL (config data rarely changes)
+	r.cache.SetAsync(ctx, cacheKey, serverInfo, redis.ConfigTTL)
+	logger.Log.WithField("ttl", redis.ConfigTTL).Debug("Server info cached")
 
 	return serverInfo, nil
 }
 
-// ✅ NEW: GetNetworkConfig with caching
+// ✅ ENHANCED: GetNetworkConfig with caching + async updates
 func (r *CachedConfigRepository) GetNetworkConfig(ctx context.Context) (*entities.NetworkConfig, error) {
 	// Try cache first
 	cacheKey := r.cache.GenerateConfigKey("network_config")
@@ -70,17 +68,14 @@ func (r *CachedConfigRepository) GetNetworkConfig(ctx context.Context) (*entitie
 		return nil, err
 	}
 
-	// Cache the result with long TTL (config data rarely changes)
-	if cacheErr := r.cache.SetWithTTL(ctx, cacheKey, networkConfig, redis.ConfigTTL); cacheErr != nil {
-		logger.Log.WithError(cacheErr).Warn("Failed to cache network config")
-	} else {
-		logger.Log.WithField("ttl", redis.ConfigTTL).Debug("Network config cached")
-	}
+	// 🔥 Async caching with long TTL (config data rarely changes)
+	r.cache.SetAsync(ctx, cacheKey, networkConfig, redis.ConfigTTL)
+	logger.Log.WithField("ttl", redis.ConfigTTL).Debug("Network config cached")
 
 	return networkConfig, nil
 }
 
-// ✅ NEW: GetAllConfig with caching
+// ✅ ENHANCED: GetAllConfig with caching + async updates
 func (r *CachedConfigRepository) GetAllConfig(ctx context.Context) (map[string]string, error) {
 	// Try cache first
 	cacheKey := r.cache.GenerateConfigKey("all_config")
@@ -99,17 +94,14 @@ func (r *CachedConfigRepository) GetAllConfig(ctx context.Context) (map[string]s
 		return nil, err
 	}
 
-	// Cache the result with long TTL (config data rarely changes)
-	if cacheErr := r.cache.SetWithTTL(ctx, cacheKey, allConfig, redis.ConfigTTL); cacheErr != nil {
-		logger.Log.WithError(cacheErr).Warn("Failed to cache all config")
-	} else {
-		logger.Log.WithField("ttl", redis.ConfigTTL).Debug("All config cached")
-	}
+	// 🔥 Async caching with long TTL (config data rarely changes)
+	r.cache.SetAsync(ctx, cacheKey, allConfig, redis.ConfigTTL)
+	logger.Log.WithField("ttl", redis.ConfigTTL).Debug("All config cached")
 
 	return allConfig, nil
 }
 
-// ✅ NEW: Config cache invalidation helpers
+// 🔥 NEW: Config cache invalidation helpers
 
 // InvalidateServerInfoCache clears server info cache
 func (r *CachedConfigRepository) InvalidateServerInfoCache(ctx context.Context) error {
@@ -125,27 +117,49 @@ func (r *CachedConfigRepository) InvalidateNetworkConfigCache(ctx context.Contex
 
 // InvalidateAllConfigCache clears all config cache
 func (r *CachedConfigRepository) InvalidateAllConfigCache(ctx context.Context) error {
-	// Clear all config-related caches
-	return r.cache.DeleteByPattern(ctx, "config:*")
+	// 🔥 Use async pattern deletion to avoid blocking
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := r.cache.DeleteByPattern(ctx, "config:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete config cache by pattern")
+		}
+	}()
+
+	return nil
 }
 
-// ✅ NEW: Warm up config cache
+// 🔥 NEW: Cache warming for configs
 func (r *CachedConfigRepository) WarmupCache(ctx context.Context) error {
 	logger.Log.Info("Starting config cache warmup")
 
+	// 🔥 Pre-load frequently accessed configs in parallel
+	errChan := make(chan error, 3)
+
 	// Pre-load server info
-	if _, err := r.GetServerInfo(ctx); err != nil {
-		logger.Log.WithError(err).Warn("Failed to warm up server info cache")
-	}
+	go func() {
+		_, err := r.GetServerInfo(ctx)
+		errChan <- err
+	}()
 
 	// Pre-load network config
-	if _, err := r.GetNetworkConfig(ctx); err != nil {
-		logger.Log.WithError(err).Warn("Failed to warm up network config cache")
-	}
+	go func() {
+		_, err := r.GetNetworkConfig(ctx)
+		errChan <- err
+	}()
 
 	// Pre-load all config
-	if _, err := r.GetAllConfig(ctx); err != nil {
-		logger.Log.WithError(err).Warn("Failed to warm up all config cache")
+	go func() {
+		_, err := r.GetAllConfig(ctx)
+		errChan <- err
+	}()
+
+	// Wait for all warmup operations
+	for i := 0; i < 3; i++ {
+		if err := <-errChan; err != nil {
+			logger.Log.WithError(err).Warn("Config cache warmup error (non-critical)")
+		}
 	}
 
 	logger.Log.Info("Config cache warmup completed")

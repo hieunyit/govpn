@@ -30,12 +30,20 @@ func (r *CachedUserRepository) Create(ctx context.Context, user *entities.User) 
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
-		logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after user creation")
-	}
+	// 🔥 Write-through caching: Cache the new user immediately
+	userKey := r.getUserKey(user.Username)
+	r.cache.SetAsync(ctx, userKey, user, redis.UserTTL)
 
-	logger.Log.WithField("username", user.Username).Debug("User created, cache invalidated")
+	// 🔥 Async cache invalidation to avoid blocking
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
+			logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after user creation")
+		}
+	}()
+
+	logger.Log.WithField("username", user.Username).Debug("User created, cache updated")
 	return nil
 }
 
@@ -56,10 +64,9 @@ func (r *CachedUserRepository) GetByUsername(ctx context.Context, username strin
 		return nil, err
 	}
 
-	// Cache the result with user-specific TTL
-	if cacheErr := r.cache.SetWithTTL(ctx, key, user, redis.UserTTL); cacheErr != nil {
-		logger.Log.WithField("username", username).WithError(cacheErr).Warn("Failed to cache user")
-	} else {
+	if user != nil {
+		// 🔥 Async caching to avoid blocking the response
+		r.cache.SetAsync(ctx, key, user, redis.UserTTL)
 		logger.Log.WithField("username", username).Debug("User cached")
 	}
 
@@ -72,12 +79,20 @@ func (r *CachedUserRepository) Update(ctx context.Context, user *entities.User) 
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
-		logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after user update")
-	}
+	// 🔥 Write-through caching: Update cache immediately with fresh data
+	userKey := r.getUserKey(user.Username)
+	r.cache.SetAsync(ctx, userKey, user, redis.UserTTL)
 
-	logger.Log.WithField("username", user.Username).Debug("User updated, cache invalidated")
+	// 🔥 Async cache invalidation for related caches
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
+			logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after user update")
+		}
+	}()
+
+	logger.Log.WithField("username", user.Username).Debug("User updated, cache refreshed")
 	return nil
 }
 
@@ -87,16 +102,24 @@ func (r *CachedUserRepository) Delete(ctx context.Context, username string) erro
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, username); err != nil {
-		logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after user deletion")
-	}
+	// 🔥 Immediate cache deletion for removes
+	userKey := r.getUserKey(username)
+	r.cache.DelAsync(ctx, userKey)
 
-	logger.Log.WithField("username", username).Debug("User deleted, cache invalidated")
+	// 🔥 Async invalidation for related caches
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, username); err != nil {
+			logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after user deletion")
+		}
+	}()
+
+	logger.Log.WithField("username", username).Debug("User deleted, cache cleared")
 	return nil
 }
 
-// ✅ ENHANCED: Now supports caching filtered queries
+// ✅ ENHANCED: Now supports caching filtered queries with smart strategy
 func (r *CachedUserRepository) List(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, error) {
 	// Generate cache key based on filter
 	var cacheKey string
@@ -109,11 +132,17 @@ func (r *CachedUserRepository) List(ctx context.Context, filter *entities.UserFi
 		useCache = true
 		ttl = redis.ListTTL
 	} else {
-		// ✅ NEW: Cache filtered queries with short TTL
-		cacheKey = r.cache.GenerateFilterKey("users", filter)
-		useCache = true
-		ttl = redis.FilteredTTL
-		logger.Log.WithField("filter_key", cacheKey).Debug("Generated cache key for filtered user query")
+		// 🔥 Smart caching strategy for filtered queries
+		if r.shouldCacheFilter(filter) {
+			cacheKey = r.cache.GenerateFilterKey("users", filter)
+			useCache = true
+			ttl = redis.FilteredTTL
+			logger.Log.WithField("filter_key", cacheKey).Debug("Generated cache key for filtered user query")
+		} else {
+			// Don't cache very specific or one-time filters
+			useCache = false
+			logger.Log.Debug("Skipping cache for specific filter")
+		}
 	}
 
 	if useCache {
@@ -134,19 +163,52 @@ func (r *CachedUserRepository) List(ctx context.Context, filter *entities.UserFi
 	}
 
 	// Cache the result if caching is enabled for this query
-	if useCache {
-		if cacheErr := r.cache.SetWithTTL(ctx, cacheKey, users, ttl); cacheErr != nil {
-			logger.Log.WithField("cache_key", cacheKey).WithError(cacheErr).Warn("Failed to cache user list")
-		} else {
-			logger.Log.WithField("cache_key", cacheKey).WithField("ttl", ttl).Debug("User list cached")
-		}
+	if useCache && len(users) > 0 {
+		// 🔥 Async caching to not block response
+		r.cache.SetAsync(ctx, cacheKey, users, ttl)
+		logger.Log.WithField("cache_key", cacheKey).WithField("ttl", ttl).Debug("User list cached")
 	}
 
 	return users, nil
 }
 
+// 🔥 Smart filter caching strategy - only cache common filters
+func (r *CachedUserRepository) shouldCacheFilter(filter *entities.UserFilter) bool {
+	// Don't cache very specific searches (likely one-time queries)
+	if filter.Username != "" || filter.Email != "" || filter.MacAddress != "" {
+		return false
+	}
+
+	// Don't cache searches with exact match (usually one-time)
+	if filter.ExactMatch {
+		return false
+	}
+
+	// Cache common administrative filters
+	if filter.IsEnabled != nil || filter.GroupName != "" || filter.Role != "" {
+		return true
+	}
+
+	// Cache expiration-related queries (commonly used)
+	if filter.ExpiringInDays != nil || filter.IncludeExpired != nil {
+		return true
+	}
+
+	// Cache pagination queries
+	if filter.Limit > 0 || filter.Offset > 0 {
+		return true
+	}
+
+	// Cache text searches only if they're not too specific
+	if filter.SearchText != "" && len(filter.SearchText) <= 3 {
+		return true
+	}
+
+	return false
+}
+
 func (r *CachedUserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
-	// Check cache first
+	// 🔥 Leverage cached user data if available
 	key := r.getUserKey(username)
 	var cachedUser entities.User
 	if err := r.cache.Get(ctx, key, &cachedUser); err == nil {
@@ -154,12 +216,39 @@ func (r *CachedUserRepository) ExistsByUsername(ctx context.Context, username st
 	}
 
 	// Cache miss - check repository
-	return r.repo.ExistsByUsername(ctx, username)
+	exists, err := r.repo.ExistsByUsername(ctx, username)
+	if err != nil {
+		return false, err
+	}
+
+	// 🔥 Cache negative results briefly to prevent repeated DB queries
+	if !exists {
+		negativeKey := fmt.Sprintf("user_not_exists:%s", username)
+		r.cache.SetAsync(ctx, negativeKey, false, 1*time.Minute)
+	}
+
+	return exists, nil
 }
 
 func (r *CachedUserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	// Email lookups are not cached in this implementation
-	return r.repo.ExistsByEmail(ctx, email)
+	// 🔥 Cache email existence checks (useful for validation)
+	cacheKey := fmt.Sprintf("email_exists:%s", email)
+	var exists bool
+
+	if err := r.cache.Get(ctx, cacheKey, &exists); err == nil {
+		return exists, nil
+	}
+
+	// Cache miss - check repository
+	exists, err := r.repo.ExistsByEmail(ctx, email)
+	if err != nil {
+		return false, err
+	}
+
+	// 🔥 Cache result briefly
+	r.cache.SetAsync(ctx, cacheKey, exists, 2*time.Minute)
+
+	return exists, nil
 }
 
 func (r *CachedUserRepository) Enable(ctx context.Context, username string) error {
@@ -168,10 +257,14 @@ func (r *CachedUserRepository) Enable(ctx context.Context, username string) erro
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, username); err != nil {
-		logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after user enable")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, username); err != nil {
+			logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after user enable")
+		}
+	}()
 
 	return nil
 }
@@ -182,10 +275,14 @@ func (r *CachedUserRepository) Disable(ctx context.Context, username string) err
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, username); err != nil {
-		logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after user disable")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, username); err != nil {
+			logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after user disable")
+		}
+	}()
 
 	return nil
 }
@@ -196,10 +293,14 @@ func (r *CachedUserRepository) UserPropDel(ctx context.Context, user *entities.U
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
-		logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after UserPropDel")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
+			logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after UserPropDel")
+		}
+	}()
 
 	return nil
 }
@@ -210,10 +311,14 @@ func (r *CachedUserRepository) SetPassword(ctx context.Context, username, passwo
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, username); err != nil {
-		logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after password change")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, username); err != nil {
+			logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after password change")
+		}
+	}()
 
 	logger.Log.WithField("username", username).Debug("Password updated, cache invalidated")
 	return nil
@@ -225,16 +330,20 @@ func (r *CachedUserRepository) RegenerateTOTP(ctx context.Context, username stri
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateUserCaches(ctx, username); err != nil {
-		logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after TOTP regeneration")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateUserCaches(ctx, username); err != nil {
+			logger.Log.WithField("username", username).WithError(err).Warn("Failed to invalidate cache after TOTP regeneration")
+		}
+	}()
 
 	logger.Log.WithField("username", username).Debug("TOTP regenerated, cache invalidated")
 	return nil
 }
 
-// ✅ ENHANCED: Cache expiring users with short TTL
+// ✅ ENHANCED: Cache expiring users with smart TTL
 func (r *CachedUserRepository) GetExpiringUsers(ctx context.Context, days int) ([]string, error) {
 	// Generate cache key for expiring users
 	cacheKey := r.cache.GenerateExpirationKey(days, false)
@@ -254,12 +363,9 @@ func (r *CachedUserRepository) GetExpiringUsers(ctx context.Context, days int) (
 		return nil, err
 	}
 
-	// Cache the result with short TTL
-	if cacheErr := r.cache.SetWithTTL(ctx, cacheKey, users, redis.ExpirationTTL); cacheErr != nil {
-		logger.Log.WithField("days", days).WithError(cacheErr).Warn("Failed to cache expiring users")
-	} else {
-		logger.Log.WithField("days", days).Debug("Expiring users cached")
-	}
+	// 🔥 Cache with short TTL as expiration data changes frequently
+	r.cache.SetAsync(ctx, cacheKey, users, redis.ExpirationTTL)
+	logger.Log.WithField("days", days).Debug("Expiring users cached")
 
 	return users, nil
 }
@@ -270,7 +376,7 @@ func (r *CachedUserRepository) getUserKey(username string) string {
 	return fmt.Sprintf("user:%s", username)
 }
 
-// Enhanced cache invalidation - clears individual user, lists, and filtered queries
+// 🔥 Enhanced cache invalidation with smart batching
 func (r *CachedUserRepository) invalidateUserCaches(ctx context.Context, username string) error {
 	userKey := r.getUserKey(username)
 	listKey := "users:list"
@@ -280,17 +386,31 @@ func (r *CachedUserRepository) invalidateUserCaches(ctx context.Context, usernam
 		return err
 	}
 
-	// ✅ NEW: Delete all filtered user queries
-	if err := r.cache.DeleteByPattern(ctx, "users:filter:*"); err != nil {
-		logger.Log.WithError(err).Warn("Failed to delete filtered user cache by pattern")
-		// Don't return error as this is not critical
-	}
+	// 🔥 Async deletion of pattern-based caches to avoid blocking
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	// ✅ NEW: Delete expiration caches
-	if err := r.cache.DeleteByPattern(ctx, "expiration:*"); err != nil {
-		logger.Log.WithError(err).Warn("Failed to delete expiration cache by pattern")
-		// Don't return error as this is not critical
-	}
+		// Delete all filtered user queries
+		if err := r.cache.DeleteByPattern(ctx, "users:filter:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete filtered user cache by pattern")
+		}
+
+		// Delete expiration caches
+		if err := r.cache.DeleteByPattern(ctx, "expiration:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete expiration cache by pattern")
+		}
+
+		// Delete email existence caches
+		if err := r.cache.DeleteByPattern(ctx, "email_exists:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete email existence cache by pattern")
+		}
+
+		// Delete negative caches
+		if err := r.cache.DeleteByPattern(ctx, "user_not_exists:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete negative cache by pattern")
+		}
+	}()
 
 	return nil
 }

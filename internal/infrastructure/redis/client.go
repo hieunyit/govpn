@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"govpn/pkg/config"
 	"govpn/pkg/logger"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -38,12 +39,35 @@ type Client struct {
 	rdb     *redis.Client
 	enabled bool
 	ttl     time.Duration // Default TTL
+
+	// 🔥 Simple performance enhancements
+	writeQueue   chan writeOperation
+	workers      int
+	asyncEnabled bool // 🔥 Flag để enable/disable async operations khi có vấn đề
+	metrics      struct {
+		hits   int64
+		misses int64
+		errors int64
+		mu     sync.RWMutex
+	}
+}
+
+type writeOperation struct {
+	operation string
+	key       string
+	value     interface{}
+	ttl       time.Duration
+	ctx       context.Context
+	retry     int
 }
 
 func NewClient(cfg config.RedisConfig) (*Client, error) {
 	client := &Client{
-		enabled: cfg.Enabled,
-		ttl:     cfg.TTL, // Default TTL from config
+		enabled:      cfg.Enabled,
+		ttl:          cfg.TTL,                         // Default TTL from config
+		workers:      5,                               // 🔥 Background workers for async operations
+		writeQueue:   make(chan writeOperation, 1000), // 🔥 Buffer for async operations
+		asyncEnabled: true,                            // 🔥 Enable async operations by default
 	}
 
 	if !cfg.Enabled {
@@ -53,14 +77,28 @@ func NewClient(cfg config.RedisConfig) (*Client, error) {
 
 	logger.Log.WithField("host", cfg.Host).
 		WithField("port", cfg.Port).
+		WithField("pool_size", cfg.PoolSize).
 		Info("Connecting to Redis")
 
+	// 🔥 Enhanced Redis options với timeout dài hơn để tránh context canceled
 	client.rdb = redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Password: cfg.Password,
-		DB:       cfg.Database,
-		PoolSize: cfg.PoolSize,
+		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Password:     cfg.Password,
+		DB:           cfg.Database,
+		PoolSize:     cfg.PoolSize,           // 🔥 Sử dụng pool size từ config
+		MinIdleConns: max(cfg.PoolSize/3, 5), // 🔥 Keep minimum idle connections
+		MaxRetries:   3,                      // 🔥 Retry failed operations
+		DialTimeout:  10 * time.Second,       // 🔥 Tăng connection timeout từ 5s -> 10s
+		ReadTimeout:  8 * time.Second,        // 🔥 Tăng read timeout từ 3s -> 8s
+		WriteTimeout: 8 * time.Second,        // 🔥 Tăng write timeout từ 3s -> 8s
+		PoolTimeout:  10 * time.Second,       // 🔥 Tăng pool timeout từ 4s -> 10s
 	})
+
+	// 🔥 Start background workers for async operations
+	client.startAsyncWorkers()
+
+	// 🔥 Start queue monitor
+	go client.monitorQueue()
 
 	// Test connection
 	if err := client.Ping(context.Background()); err != nil {
@@ -72,36 +110,157 @@ func NewClient(cfg config.RedisConfig) (*Client, error) {
 	return client, nil
 }
 
+// Helper function for Go versions that don't have max builtin
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// 🔥 Start background workers for async operations
+func (c *Client) startAsyncWorkers() {
+	for i := 0; i < c.workers; i++ {
+		go func(workerID int) {
+			for op := range c.writeQueue {
+				c.processAsyncOperation(op, workerID)
+			}
+		}(i)
+	}
+}
+
+// 🔥 Monitor queue health and log warnings
+func (c *Client) monitorQueue() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		queueLen := len(c.writeQueue)
+		queueCap := cap(c.writeQueue)
+		usage := float64(queueLen) / float64(queueCap) * 100
+
+		if usage > 80 {
+			logger.Log.WithField("queue_len", queueLen).
+				WithField("queue_cap", queueCap).
+				WithField("usage", fmt.Sprintf("%.1f%%", usage)).
+				Warn("Redis async queue is nearly full")
+		} else if usage > 50 {
+			logger.Log.WithField("queue_len", queueLen).
+				WithField("usage", fmt.Sprintf("%.1f%%", usage)).
+				Info("Redis async queue usage is moderate")
+		}
+	}
+}
+
+// 🔥 Process async operations with better context handling
+func (c *Client) processAsyncOperation(op writeOperation, workerID int) {
+	// 🔥 Tạo context riêng với timeout dài hơn cho async operations
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var err error
+
+	switch op.operation {
+	case "set":
+		err = c.setWithTTL(ctx, op.key, op.value, op.ttl)
+	case "del":
+		err = c.del(ctx, op.key)
+	}
+
+	if err != nil {
+		c.incrementErrors()
+
+		// 🔥 Better error handling for async operations
+		if err == context.Canceled || err == context.DeadlineExceeded {
+			logger.Log.WithField("worker", workerID).
+				WithField("key", op.key).
+				WithField("operation", op.operation).
+				Warn("Async operation timeout/canceled")
+		}
+
+		// 🔥 Simple retry logic with longer delays
+		if op.retry < 2 {
+			retryDelay := time.Duration(op.retry+1) * 2 * time.Second // 🔥 Tăng delay
+			time.Sleep(retryDelay)
+
+			op.retry++
+			select {
+			case c.writeQueue <- op:
+				logger.Log.WithField("worker", workerID).
+					WithField("key", op.key).
+					WithField("retry", op.retry).
+					Debug("Retrying async operation")
+			default:
+				logger.Log.WithField("worker", workerID).
+					WithField("key", op.key).
+					Warn("Write queue full, dropping retry operation")
+			}
+		} else {
+			logger.Log.WithField("worker", workerID).
+				WithField("key", op.key).
+				WithField("operation", op.operation).
+				Error("Async operation failed after retries")
+		}
+	}
+}
+
 func (c *Client) Ping(ctx context.Context) error {
 	if !c.enabled || c.rdb == nil {
 		return nil
 	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// 🔥 Tăng timeout cho ping
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	return c.rdb.Ping(ctxWithTimeout).Err()
+	err := c.rdb.Ping(ctxWithTimeout).Err()
+	if err != nil && (err == context.Canceled || err == context.DeadlineExceeded) {
+		logger.Log.Warn("Redis ping timeout")
+	}
+	return err
 }
 
-// ✅ ENHANCED: Set with custom TTL
+// ✅ ENHANCED: Set with custom TTL (giữ nguyên interface từ code gốc)
 func (c *Client) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	if !c.enabled || c.rdb == nil {
 		logger.Log.Debug("Redis is disabled, skipping SetWithTTL operation")
 		return nil
 	}
 
+	return c.setWithTTL(ctx, key, value, ttl)
+}
+
+func (c *Client) setWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	data, err := json.Marshal(value)
 	if err != nil {
+		c.incrementErrors()
 		logger.Log.WithError(err).WithField("key", key).Error("Failed to marshal data for Redis")
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// 🔥 Tăng timeout và tạo context riêng cho async operations
+	var ctxWithTimeout context.Context
+	var cancel context.CancelFunc
+
+	// Nếu context gốc đã có deadline, sử dụng nó, nếu không tạo timeout mới
+	if deadline, ok := ctx.Deadline(); ok {
+		ctxWithTimeout, cancel = context.WithDeadline(context.Background(), deadline)
+	} else {
+		ctxWithTimeout, cancel = context.WithTimeout(context.Background(), 10*time.Second) // 🔥 Tăng từ 5s -> 10s
+	}
 	defer cancel()
 
 	err = c.rdb.Set(ctxWithTimeout, key, data, ttl).Err()
 	if err != nil {
-		logger.Log.WithError(err).WithField("key", key).Error("Failed to set data in Redis")
+		c.incrementErrors()
+		// 🔥 Cải thiện error logging
+		if err == context.Canceled {
+			logger.Log.WithField("key", key).WithField("ttl", ttl).Warn("Redis set operation canceled")
+		} else if err == context.DeadlineExceeded {
+			logger.Log.WithField("key", key).WithField("ttl", ttl).Warn("Redis set operation timeout")
+		} else {
+			logger.Log.WithError(err).WithField("key", key).Error("Failed to set data in Redis")
+		}
 		return fmt.Errorf("failed to set data in Redis: %w", err)
 	}
 
@@ -109,24 +268,63 @@ func (c *Client) SetWithTTL(ctx context.Context, key string, value interface{}, 
 	return nil
 }
 
-// Original Set method (uses default TTL)
+// Original Set method (uses default TTL) - giữ nguyên từ code gốc
 func (c *Client) Set(ctx context.Context, key string, value interface{}) error {
 	return c.SetWithTTL(ctx, key, value, c.ttl)
 }
 
+// 🔥 NEW: Async Set with improved context handling
+func (c *Client) SetAsync(ctx context.Context, key string, value interface{}, ttl time.Duration) {
+	if !c.enabled || c.rdb == nil {
+		return
+	}
+
+	// 🔥 Fallback to sync if async is disabled due to issues
+	if !c.asyncEnabled {
+		c.SetWithTTL(ctx, key, value, ttl)
+		return
+	}
+
+	op := writeOperation{
+		operation: "set",
+		key:       key,
+		value:     value,
+		ttl:       ttl,
+		ctx:       context.Background(), // 🔥 Sử dụng background context để tránh timeout từ request context
+		retry:     0,
+	}
+
+	select {
+	case c.writeQueue <- op:
+		// Successfully queued for background processing
+		logger.Log.WithField("key", key).Debug("Async set operation queued")
+	default:
+		// Queue is full, fallback to synchronous operation
+		logger.Log.WithField("key", key).Warn("Write queue full, falling back to sync operation")
+		c.SetWithTTL(ctx, key, value, ttl)
+	}
+}
+
+// Get method - tăng timeout và better error handling
 func (c *Client) Get(ctx context.Context, key string, dest interface{}) error {
 	if !c.enabled || c.rdb == nil {
 		return redis.Nil
 	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// 🔥 Tăng timeout cho Get operations
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
 	data, err := c.rdb.Get(ctxWithTimeout, key).Bytes()
 	if err != nil {
 		if err == redis.Nil {
+			c.incrementMisses()
 			logger.Log.WithField("key", key).Debug("Cache miss")
+		} else if err == context.Canceled || err == context.DeadlineExceeded {
+			c.incrementErrors()
+			logger.Log.WithField("key", key).Warn("Redis get operation timeout")
 		} else {
+			c.incrementErrors()
 			logger.Log.WithError(err).WithField("key", key).Error("Failed to get data from Redis")
 		}
 		return err
@@ -134,26 +332,39 @@ func (c *Client) Get(ctx context.Context, key string, dest interface{}) error {
 
 	err = json.Unmarshal(data, dest)
 	if err != nil {
+		c.incrementErrors()
 		logger.Log.WithError(err).WithField("key", key).Error("Failed to unmarshal data from Redis")
 		return fmt.Errorf("failed to unmarshal data: %w", err)
 	}
 
+	c.incrementHits()
 	logger.Log.WithField("key", key).Debug("Cache hit")
 	return nil
 }
 
+// Del method - giữ nguyên từ code gốc
 func (c *Client) Del(ctx context.Context, key string) error {
 	if !c.enabled || c.rdb == nil {
 		logger.Log.Debug("Redis is disabled, skipping Del operation")
 		return nil
 	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	return c.del(ctx, key)
+}
+
+func (c *Client) del(ctx context.Context, key string) error {
+	// 🔥 Tăng timeout cho delete operations
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
 	deleted, err := c.rdb.Del(ctxWithTimeout, key).Result()
 	if err != nil {
-		logger.Log.WithError(err).WithField("key", key).Error("Failed to delete key from Redis")
+		c.incrementErrors()
+		if err == context.Canceled || err == context.DeadlineExceeded {
+			logger.Log.WithField("key", key).Warn("Redis delete operation timeout")
+		} else {
+			logger.Log.WithError(err).WithField("key", key).Error("Failed to delete key from Redis")
+		}
 		return fmt.Errorf("failed to delete key from Redis: %w", err)
 	}
 
@@ -165,6 +376,37 @@ func (c *Client) Del(ctx context.Context, key string) error {
 	return nil
 }
 
+// 🔥 NEW: Async Delete with improved context handling
+func (c *Client) DelAsync(ctx context.Context, key string) {
+	if !c.enabled || c.rdb == nil {
+		return
+	}
+
+	// 🔥 Fallback to sync if async is disabled due to issues
+	if !c.asyncEnabled {
+		c.Del(ctx, key)
+		return
+	}
+
+	op := writeOperation{
+		operation: "del",
+		key:       key,
+		ctx:       context.Background(), // 🔥 Sử dụng background context để tránh timeout
+		retry:     0,
+	}
+
+	select {
+	case c.writeQueue <- op:
+		// Successfully queued
+		logger.Log.WithField("key", key).Debug("Async delete operation queued")
+	default:
+		// Fallback to sync
+		logger.Log.WithField("key", key).Warn("Write queue full, falling back to sync delete")
+		c.Del(ctx, key)
+	}
+}
+
+// FlushAll method - giữ nguyên từ code gốc
 func (c *Client) FlushAll(ctx context.Context) error {
 	if !c.enabled || c.rdb == nil {
 		logger.Log.Debug("Redis is disabled, skipping FlushAll operation")
@@ -176,6 +418,7 @@ func (c *Client) FlushAll(ctx context.Context) error {
 
 	err := c.rdb.FlushDB(ctxWithTimeout).Err()
 	if err != nil {
+		c.incrementErrors()
 		logger.Log.WithError(err).Error("Failed to flush Redis database")
 		return fmt.Errorf("failed to flush Redis database: %w", err)
 	}
@@ -184,6 +427,7 @@ func (c *Client) FlushAll(ctx context.Context) error {
 	return nil
 }
 
+// DelMultiple method - giữ nguyên từ code gốc
 func (c *Client) DelMultiple(ctx context.Context, keys ...string) error {
 	if !c.enabled || c.rdb == nil || len(keys) == 0 {
 		return nil
@@ -194,6 +438,7 @@ func (c *Client) DelMultiple(ctx context.Context, keys ...string) error {
 
 	deleted, err := c.rdb.Del(ctxWithTimeout, keys...).Result()
 	if err != nil {
+		c.incrementErrors()
 		logger.Log.WithError(err).WithField("keys", keys).Error("Failed to delete multiple keys from Redis")
 		return fmt.Errorf("failed to delete multiple keys: %w", err)
 	}
@@ -202,6 +447,7 @@ func (c *Client) DelMultiple(ctx context.Context, keys ...string) error {
 	return nil
 }
 
+// Exists method - giữ nguyên từ code gốc
 func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 	if !c.enabled || c.rdb == nil {
 		return false, nil
@@ -212,6 +458,7 @@ func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 
 	exists, err := c.rdb.Exists(ctxWithTimeout, key).Result()
 	if err != nil {
+		c.incrementErrors()
 		logger.Log.WithError(err).WithField("key", key).Error("Failed to check key existence in Redis")
 		return false, fmt.Errorf("failed to check key existence: %w", err)
 	}
@@ -219,9 +466,7 @@ func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 	return exists == 1, nil
 }
 
-// ✅ NEW: Helper methods for cache key generation
-
-// GenerateFilterKey generates a consistent cache key for filtered queries
+// Helper methods - giữ nguyên từ code gốc
 func (c *Client) GenerateFilterKey(prefix string, filters interface{}) string {
 	// Convert filters to JSON and hash it for consistent key
 	filterJSON, err := json.Marshal(filters)
@@ -237,19 +482,15 @@ func (c *Client) GenerateFilterKey(prefix string, filters interface{}) string {
 	return fmt.Sprintf("%s:filter:%s", prefix, hashStr)
 }
 
-// GenerateConfigKey generates cache key for config data
 func (c *Client) GenerateConfigKey(configType string) string {
 	return fmt.Sprintf("config:%s", configType)
 }
 
-// GenerateExpirationKey generates cache key for expiration data
 func (c *Client) GenerateExpirationKey(days int, includeExpired bool) string {
 	return fmt.Sprintf("expiration:days:%d:expired:%t", days, includeExpired)
 }
 
-// ✅ NEW: Batch operations for pattern-based deletion
-
-// DeleteByPattern deletes all keys matching a pattern
+// 🔥 ENHANCED: DeleteByPattern with SCAN for large datasets
 func (c *Client) DeleteByPattern(ctx context.Context, pattern string) error {
 	if !c.enabled || c.rdb == nil {
 		return nil
@@ -258,32 +499,84 @@ func (c *Client) DeleteByPattern(ctx context.Context, pattern string) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Get all keys matching pattern
-	keys, err := c.rdb.Keys(ctxWithTimeout, pattern).Result()
-	if err != nil {
-		logger.Log.WithError(err).WithField("pattern", pattern).Error("Failed to get keys by pattern")
-		return fmt.Errorf("failed to get keys by pattern: %w", err)
-	}
+	// 🔥 Use SCAN instead of KEYS for large datasets to avoid blocking Redis
+	var cursor uint64
+	batchSize := 1000
+	totalDeleted := 0
 
-	if len(keys) == 0 {
-		logger.Log.WithField("pattern", pattern).Debug("No keys found matching pattern")
-		return nil
-	}
+	for {
+		keys, nextCursor, err := c.rdb.Scan(ctxWithTimeout, cursor, pattern, int64(batchSize)).Result()
+		if err != nil {
+			c.incrementErrors()
+			return fmt.Errorf("failed to scan keys with pattern %s: %w", pattern, err)
+		}
 
-	// Delete all matching keys
-	deleted, err := c.rdb.Del(ctxWithTimeout, keys...).Result()
-	if err != nil {
-		logger.Log.WithError(err).WithField("pattern", pattern).Error("Failed to delete keys by pattern")
-		return fmt.Errorf("failed to delete keys by pattern: %w", err)
+		if len(keys) > 0 {
+			if err := c.rdb.Del(ctxWithTimeout, keys...).Err(); err != nil {
+				c.incrementErrors()
+				logger.Log.WithError(err).WithField("pattern", pattern).Warn("Failed to delete some keys in batch")
+			} else {
+				totalDeleted += len(keys)
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
 	}
 
 	logger.Log.WithField("pattern", pattern).
-		WithField("deleted_count", deleted).
+		WithField("deleted_count", totalDeleted).
 		Debug("Keys deleted by pattern")
 	return nil
 }
 
-// ✅ NEW: Cache warming helper
+// 🔥 NEW: Performance monitoring methods
+func (c *Client) incrementHits() {
+	c.metrics.mu.Lock()
+	c.metrics.hits++
+	c.metrics.mu.Unlock()
+}
+
+func (c *Client) incrementMisses() {
+	c.metrics.mu.Lock()
+	c.metrics.misses++
+	c.metrics.mu.Unlock()
+}
+
+func (c *Client) incrementErrors() {
+	c.metrics.mu.Lock()
+	c.metrics.errors++
+	c.metrics.mu.Unlock()
+}
+
+func (c *Client) GetMetrics() map[string]interface{} {
+	c.metrics.mu.RLock()
+	defer c.metrics.mu.RUnlock()
+
+	total := c.metrics.hits + c.metrics.misses
+	hitRate := float64(0)
+	if total > 0 {
+		hitRate = float64(c.metrics.hits) / float64(total) * 100
+	}
+
+	return map[string]interface{}{
+		"hits":          c.metrics.hits,
+		"misses":        c.metrics.misses,
+		"errors":        c.metrics.errors,
+		"hit_rate":      fmt.Sprintf("%.2f%%", hitRate),
+		"total":         total,
+		"enabled":       c.enabled,
+		"async_enabled": c.asyncEnabled,
+		"queue_len":     len(c.writeQueue),
+		"queue_cap":     cap(c.writeQueue),
+		"workers":       c.workers,
+		"queue_usage":   fmt.Sprintf("%.1f%%", float64(len(c.writeQueue))/float64(cap(c.writeQueue))*100),
+	}
+}
+
+// WarmCache method - giữ nguyên từ code gốc
 func (c *Client) WarmCache(ctx context.Context, warmupFunc func(context.Context) error) error {
 	if !c.enabled {
 		return nil
@@ -303,6 +596,11 @@ func (c *Client) WarmCache(ctx context.Context, warmupFunc func(context.Context)
 }
 
 func (c *Client) Close() error {
+	// Close write queue
+	if c.writeQueue != nil {
+		close(c.writeQueue)
+	}
+
 	if c.rdb != nil {
 		return c.rdb.Close()
 	}
@@ -313,7 +611,7 @@ func (c *Client) IsEnabled() bool {
 	return c.enabled && c.rdb != nil
 }
 
-// ✅ NEW: Cache statistics
+// ✅ ENHANCED: Cache statistics with performance metrics (giữ nguyên từ code gốc nhưng thêm metrics)
 func (c *Client) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	if !c.enabled || c.rdb == nil {
 		return map[string]interface{}{
@@ -327,6 +625,7 @@ func (c *Client) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	// Get basic Redis info
 	info, err := c.rdb.Info(ctxWithTimeout, "memory", "keyspace").Result()
 	if err != nil {
+		c.incrementErrors()
 		return nil, fmt.Errorf("failed to get Redis info: %w", err)
 	}
 
@@ -335,6 +634,9 @@ func (c *Client) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	groupKeys, _ := c.rdb.Keys(ctxWithTimeout, "group:*").Result()
 	configKeys, _ := c.rdb.Keys(ctxWithTimeout, "config:*").Result()
 	filterKeys, _ := c.rdb.Keys(ctxWithTimeout, "*:filter:*").Result()
+
+	// Get performance metrics
+	metrics := c.GetMetrics()
 
 	stats := map[string]interface{}{
 		"enabled": true,
@@ -353,6 +655,7 @@ func (c *Client) GetStats(ctx context.Context) (map[string]interface{}, error) {
 			"config_ttl":     ConfigTTL.String(),
 			"expiration_ttl": ExpirationTTL.String(),
 		},
+		"performance_metrics": metrics,
 	}
 
 	return stats, nil

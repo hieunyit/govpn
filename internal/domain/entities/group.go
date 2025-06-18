@@ -14,6 +14,7 @@ type Group struct {
 type GroupFilter struct {
 	GroupName  string
 	AuthMethod string
+	IsEnabled  *bool
 	Role       string
 	Limit      int
 	Offset     int

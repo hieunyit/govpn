@@ -30,12 +30,20 @@ func (r *CachedGroupRepository) Create(ctx context.Context, group *entities.Grou
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
-		logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after group creation")
-	}
+	// 🔥 Write-through caching: Cache the new group immediately
+	groupKey := r.getGroupKey(group.GroupName)
+	r.cache.SetAsync(ctx, groupKey, group, redis.GroupTTL)
 
-	logger.Log.WithField("groupName", group.GroupName).Debug("Group created, cache invalidated")
+	// 🔥 Async cache invalidation to avoid blocking
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
+			logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after group creation")
+		}
+	}()
+
+	logger.Log.WithField("groupName", group.GroupName).Debug("Group created, cache updated")
 	return nil
 }
 
@@ -56,10 +64,9 @@ func (r *CachedGroupRepository) GetByName(ctx context.Context, groupName string)
 		return nil, err
 	}
 
-	// Cache the result with group-specific TTL
-	if cacheErr := r.cache.SetWithTTL(ctx, key, group, redis.GroupTTL); cacheErr != nil {
-		logger.Log.WithField("groupName", groupName).WithError(cacheErr).Warn("Failed to cache group")
-	} else {
+	if group != nil {
+		// 🔥 Async caching to avoid blocking the response
+		r.cache.SetAsync(ctx, key, group, redis.GroupTTL)
 		logger.Log.WithField("groupName", groupName).Debug("Group cached")
 	}
 
@@ -72,12 +79,20 @@ func (r *CachedGroupRepository) Update(ctx context.Context, group *entities.Grou
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
-		logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after group update")
-	}
+	// 🔥 Write-through caching: Update cache immediately with fresh data
+	groupKey := r.getGroupKey(group.GroupName)
+	r.cache.SetAsync(ctx, groupKey, group, redis.GroupTTL)
 
-	logger.Log.WithField("groupName", group.GroupName).Debug("Group updated, cache invalidated")
+	// 🔥 Async cache invalidation for related caches
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
+			logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after group update")
+		}
+	}()
+
+	logger.Log.WithField("groupName", group.GroupName).Debug("Group updated, cache refreshed")
 	return nil
 }
 
@@ -87,16 +102,38 @@ func (r *CachedGroupRepository) Delete(ctx context.Context, groupName string) er
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, groupName); err != nil {
-		logger.Log.WithField("groupName", groupName).WithError(err).Warn("Failed to invalidate cache after group deletion")
-	}
+	// 🔥 Immediate cache deletion for removes
+	groupKey := r.getGroupKey(groupName)
+	r.cache.DelAsync(ctx, groupKey)
 
-	logger.Log.WithField("groupName", groupName).Debug("Group deleted, cache invalidated")
+	// 🔥 Async invalidation for related caches
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateGroupCaches(ctx, groupName); err != nil {
+			logger.Log.WithField("groupName", groupName).WithError(err).Warn("Failed to invalidate cache after group deletion")
+		}
+	}()
+
+	logger.Log.WithField("groupName", groupName).Debug("Group deleted, cache cleared")
 	return nil
 }
 
-// ✅ ENHANCED: Now supports caching filtered queries
+func (r *CachedGroupRepository) GroupPropDel(ctx context.Context, group *entities.Group) error {
+	err := r.repo.GroupPropDel(ctx, group)
+	if err != nil {
+		return err
+	}
+
+	// Invalidate related caches
+	if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
+		logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after GroupPropDel")
+	}
+
+	return nil
+}
+
+// ✅ ENHANCED: Now supports caching filtered queries with smart strategy
 func (r *CachedGroupRepository) List(ctx context.Context, filter *entities.GroupFilter) ([]*entities.Group, error) {
 	// Generate cache key based on filter
 	var cacheKey string
@@ -104,16 +141,22 @@ func (r *CachedGroupRepository) List(ctx context.Context, filter *entities.Group
 	var ttl time.Duration
 
 	if filter == nil || r.isEmptyFilter(filter) {
-		// Simple list without filters - use basic cache
+		// Simple list without filters - use basic cache with longer TTL (groups change less frequently)
 		cacheKey = "groups:list"
 		useCache = true
-		ttl = redis.ListTTL
+		ttl = redis.GroupTTL
 	} else {
-		// ✅ NEW: Cache filtered queries with short TTL
-		cacheKey = r.cache.GenerateFilterKey("groups", filter)
-		useCache = true
-		ttl = redis.FilteredTTL
-		logger.Log.WithField("filter_key", cacheKey).Debug("Generated cache key for filtered group query")
+		// 🔥 Smart caching strategy for filtered queries
+		if r.shouldCacheFilter(filter) {
+			cacheKey = r.cache.GenerateFilterKey("groups", filter)
+			useCache = true
+			ttl = redis.FilteredTTL
+			logger.Log.WithField("filter_key", cacheKey).Debug("Generated cache key for filtered group query")
+		} else {
+			// Don't cache very specific filters
+			useCache = false
+			logger.Log.Debug("Skipping cache for specific group filter")
+		}
 	}
 
 	if useCache {
@@ -134,19 +177,37 @@ func (r *CachedGroupRepository) List(ctx context.Context, filter *entities.Group
 	}
 
 	// Cache the result if caching is enabled for this query
-	if useCache {
-		if cacheErr := r.cache.SetWithTTL(ctx, cacheKey, groups, ttl); cacheErr != nil {
-			logger.Log.WithField("cache_key", cacheKey).WithError(cacheErr).Warn("Failed to cache group list")
-		} else {
-			logger.Log.WithField("cache_key", cacheKey).WithField("ttl", ttl).Debug("Group list cached")
-		}
+	if useCache && len(groups) > 0 {
+		// 🔥 Async caching to not block response
+		r.cache.SetAsync(ctx, cacheKey, groups, ttl)
+		logger.Log.WithField("cache_key", cacheKey).WithField("ttl", ttl).Debug("Group list cached")
 	}
 
 	return groups, nil
 }
 
+// 🔥 Smart filter caching strategy - only cache common filters
+func (r *CachedGroupRepository) shouldCacheFilter(filter *entities.GroupFilter) bool {
+	// Don't cache very specific searches (likely one-time queries)
+	if filter.GroupName != "" {
+		return false
+	}
+
+	// Cache common administrative filters
+	if filter.IsEnabled != nil {
+		return true
+	}
+
+	// Cache pagination queries
+	if filter.Limit > 0 || filter.Offset > 0 {
+		return true
+	}
+
+	return false
+}
+
 func (r *CachedGroupRepository) ExistsByName(ctx context.Context, groupName string) (bool, error) {
-	// Check cache first
+	// 🔥 Leverage cached group data if available
 	key := r.getGroupKey(groupName)
 	var cachedGroup entities.Group
 	if err := r.cache.Get(ctx, key, &cachedGroup); err == nil {
@@ -154,7 +215,18 @@ func (r *CachedGroupRepository) ExistsByName(ctx context.Context, groupName stri
 	}
 
 	// Cache miss - check repository
-	return r.repo.ExistsByName(ctx, groupName)
+	exists, err := r.repo.ExistsByName(ctx, groupName)
+	if err != nil {
+		return false, err
+	}
+
+	// 🔥 Cache negative results briefly to prevent repeated DB queries
+	if !exists {
+		negativeKey := fmt.Sprintf("group_not_exists:%s", groupName)
+		r.cache.SetAsync(ctx, negativeKey, false, 1*time.Minute)
+	}
+
+	return exists, nil
 }
 
 func (r *CachedGroupRepository) Enable(ctx context.Context, groupName string) error {
@@ -163,10 +235,14 @@ func (r *CachedGroupRepository) Enable(ctx context.Context, groupName string) er
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, groupName); err != nil {
-		logger.Log.WithField("groupName", groupName).WithError(err).Warn("Failed to invalidate cache after group enable")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateGroupCaches(ctx, groupName); err != nil {
+			logger.Log.WithField("groupName", groupName).WithError(err).Warn("Failed to invalidate cache after group enable")
+		}
+	}()
 
 	return nil
 }
@@ -177,10 +253,14 @@ func (r *CachedGroupRepository) Disable(ctx context.Context, groupName string) e
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, groupName); err != nil {
-		logger.Log.WithField("groupName", groupName).WithError(err).Warn("Failed to invalidate cache after group disable")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateGroupCaches(ctx, groupName); err != nil {
+			logger.Log.WithField("groupName", groupName).WithError(err).Warn("Failed to invalidate cache after group disable")
+		}
+	}()
 
 	return nil
 }
@@ -191,24 +271,14 @@ func (r *CachedGroupRepository) ClearAccessControl(ctx context.Context, group *e
 		return err
 	}
 
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
-		logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after ClearAccessControl")
-	}
-
-	return nil
-}
-
-func (r *CachedGroupRepository) GroupPropDel(ctx context.Context, group *entities.Group) error {
-	err := r.repo.GroupPropDel(ctx, group)
-	if err != nil {
-		return err
-	}
-
-	// Invalidate related caches
-	if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
-		logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after GroupPropDel")
-	}
+	// 🔥 Async cache invalidation
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.invalidateGroupCaches(ctx, group.GroupName); err != nil {
+			logger.Log.WithField("groupName", group.GroupName).WithError(err).Warn("Failed to invalidate cache after clearing access control")
+		}
+	}()
 
 	return nil
 }
@@ -219,7 +289,7 @@ func (r *CachedGroupRepository) getGroupKey(groupName string) string {
 	return fmt.Sprintf("group:%s", groupName)
 }
 
-// Enhanced cache invalidation - clears individual group, lists, and filtered queries
+// 🔥 Enhanced cache invalidation with smart batching
 func (r *CachedGroupRepository) invalidateGroupCaches(ctx context.Context, groupName string) error {
 	groupKey := r.getGroupKey(groupName)
 	listKey := "groups:list"
@@ -229,11 +299,21 @@ func (r *CachedGroupRepository) invalidateGroupCaches(ctx context.Context, group
 		return err
 	}
 
-	// ✅ NEW: Delete all filtered group queries
-	if err := r.cache.DeleteByPattern(ctx, "groups:filter:*"); err != nil {
-		logger.Log.WithError(err).Warn("Failed to delete filtered group cache by pattern")
-		// Don't return error as this is not critical
-	}
+	// 🔥 Async deletion of pattern-based caches to avoid blocking
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Delete all filtered group queries
+		if err := r.cache.DeleteByPattern(ctx, "groups:filter:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete filtered group cache by pattern")
+		}
+
+		// Delete negative caches
+		if err := r.cache.DeleteByPattern(ctx, "group_not_exists:*"); err != nil {
+			logger.Log.WithError(err).Warn("Failed to delete negative group cache by pattern")
+		}
+	}()
 
 	return nil
 }
@@ -244,11 +324,8 @@ func (r *CachedGroupRepository) isEmptyFilter(filter *entities.GroupFilter) bool
 		return true
 	}
 
-	// Check if all filter fields are empty/default
 	return filter.GroupName == "" &&
-		filter.AuthMethod == "" &&
-		filter.Role == "" &&
-		// Don't check pagination fields for emptiness
-		filter.Page == 0 &&
-		filter.Limit == 0
+		filter.IsEnabled == nil &&
+		filter.Limit == 0 &&
+		filter.Offset == 0
 }
