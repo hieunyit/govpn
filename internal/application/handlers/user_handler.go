@@ -184,6 +184,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		UserExpiration: req.UserExpiration,
 		MacAddresses:   req.MacAddresses,
 		AccessControl:  req.AccessControl,
+		GroupName:      req.GroupName,
 	}
 
 	if req.DenyAccess != nil {
