@@ -262,6 +262,8 @@ func (u *bulkUsecaseImpl) createUserWorker(ctx context.Context, userChan <-chan 
 			UserExpiration: userReq.UserExpiration,
 			MacAddresses:   validator.ConvertMAC(userReq.MacAddresses),
 			AccessControl:  userReq.AccessControl,
+			IPAssignMode:   userReq.IPAssignMode,
+			IPAddress:      userReq.IPAddress,
 		}
 		if err := u.validateUserAuthMethod(user); err != nil {
 			result.Success = false
@@ -295,6 +297,35 @@ func (u *bulkUsecaseImpl) createUserWorker(ctx context.Context, userChan <-chan 
 				continue
 			}
 			user.AccessControl = accessControl
+		}
+
+		if user.IPAssignMode == "" {
+			user.IPAssignMode = entities.IPAssignModeDynamic
+		}
+
+		helper := &userUsecaseImpl{userRepo: u.userRepo, groupRepo: u.groupRepo, ldapClient: u.ldapClient}
+		switch user.IPAssignMode {
+		case entities.IPAssignModeDynamic:
+			ip, err := helper.assignDynamicIP(ctx, user.GroupName)
+			if err != nil {
+				result.Success = false
+				result.Error = fmt.Sprintf("Failed to assign IP: %v", err)
+				resultChan <- result
+				continue
+			}
+			user.IPAddress = ip
+		case entities.IPAssignModeStatic:
+			if err := helper.validateStaticIP(ctx, user.GroupName, user.IPAddress, ""); err != nil {
+				result.Success = false
+				result.Error = fmt.Sprintf("Invalid static IP: %v", err)
+				resultChan <- result
+				continue
+			}
+		default:
+			result.Success = false
+			result.Error = "Invalid IP assign mode"
+			resultChan <- result
+			continue
 		}
 
 		// Create user
@@ -788,13 +819,14 @@ func (u *bulkUsecaseImpl) generateUserCSVTemplate() (string, []byte, error) {
 	headers := []string{
 		"username", "email", "group_name", "password", "auth_method",
 		"user_expiration", "mac_addresses", "access_control",
+		"ip_assign_mode", "ip_address",
 	}
 	writer.Write(headers)
 
 	// Write sample data
 	sampleData := [][]string{
-		{"testuser1", "test1@example.com", "Group", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24"},
-		{"ldapuser1", "ldap1@company.com", "Group", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8"},
+		{"testuser1", "test1@example.com", "Group", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24", "dynamic", ""},
+		{"ldapuser1", "ldap1@company.com", "Group", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8", "static", "10.0.0.10"},
 	}
 
 	for _, row := range sampleData {
@@ -817,6 +849,7 @@ func (u *bulkUsecaseImpl) generateUserXLSXTemplate() (string, []byte, error) {
 	headers := []string{
 		"username", "email", "group_name", "password", "auth_method",
 		"user_expiration", "mac_addresses", "access_control",
+		"ip_assign_mode", "ip_address",
 	}
 
 	headerRow := sheet.AddRow()
@@ -828,8 +861,8 @@ func (u *bulkUsecaseImpl) generateUserXLSXTemplate() (string, []byte, error) {
 
 	// Sample data
 	sampleData := [][]string{
-		{"testuser1", "test1@example.com", "Group", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24"},
-		{"ldapuser1", "ldap1@company.com", "Group", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8"},
+		{"testuser1", "test1@example.com", "Group", "SecurePass123!", "local", "31/12/2024", "AA:BB:CC:DD:EE:FF", "192.168.1.0/24", "dynamic", ""},
+		{"ldapuser1", "ldap1@company.com", "Group", "", "ldap", "31/12/2024", "11:22:33:44:55:66", "10.0.0.0/8", "static", "10.0.0.10"},
 	}
 
 	for _, rowData := range sampleData {
@@ -1122,6 +1155,16 @@ func (u *bulkUsecaseImpl) parseUsersFromCSV(headers []string, records [][]string
 					user.AccessControl[i] = strings.TrimSpace(ac)
 				}
 			}
+		}
+
+		if idx, exists := headerMap["ip_assign_mode"]; exists && idx < len(record) {
+			user.IPAssignMode = strings.TrimSpace(record[idx])
+		}
+		if idx, exists := headerMap["ip_address"]; exists && idx < len(record) {
+			user.IPAddress = strings.TrimSpace(record[idx])
+		}
+		if user.IPAssignMode == "" {
+			user.IPAssignMode = entities.IPAssignModeDynamic
 		}
 
 		// Validate individual user
