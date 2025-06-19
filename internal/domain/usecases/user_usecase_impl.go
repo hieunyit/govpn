@@ -757,7 +757,8 @@ func (u *userUsecaseImpl) assignDynamicIP(ctx context.Context, groupName string)
 
 	var subnets []*net.IPNet
 	for _, s := range group.GroupSubnet {
-		_, cidr, err := net.ParseCIDR(s)
+		subnet := strings.TrimSpace(s)
+		_, cidr, err := net.ParseCIDR(subnet)
 		if err == nil {
 			subnets = append(subnets, cidr)
 		}
@@ -768,7 +769,7 @@ func (u *userUsecaseImpl) assignDynamicIP(ctx context.Context, groupName string)
 
 	var ranges []ipRange
 	for _, r := range group.GroupRange {
-		if pr, err := parseIPRange(r); err == nil {
+		if pr, err := parseIPRange(strings.TrimSpace(r)); err == nil {
 			ranges = append(ranges, pr)
 		}
 	}
@@ -815,7 +816,8 @@ func (u *userUsecaseImpl) validateStaticIP(ctx context.Context, groupName, ipStr
 
 	var inSubnet bool
 	for _, s := range group.GroupSubnet {
-		_, cidr, err := net.ParseCIDR(s)
+		subnet := strings.TrimSpace(s)
+		_, cidr, err := net.ParseCIDR(subnet)
 		if err == nil && cidr.Contains(ip) {
 			inSubnet = true
 			break
@@ -826,7 +828,7 @@ func (u *userUsecaseImpl) validateStaticIP(ctx context.Context, groupName, ipStr
 	}
 
 	for _, r := range group.GroupRange {
-		pr, err := parseIPRange(r)
+		pr, err := parseIPRange(strings.TrimSpace(r))
 		if err == nil && ipInRange(ip, pr) {
 			return fmt.Errorf("ip within restricted range")
 		}

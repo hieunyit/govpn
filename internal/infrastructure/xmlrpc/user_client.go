@@ -308,14 +308,11 @@ func (c *UserClient) makeCreateUserRequest(user *entities.User) string {
 	if user.GroupName != "" {
 		buf.WriteString(`<member><name>conn_group</name><value><string>` + c.xmlEscape(user.GroupName) + `</string></value></member>`)
 	}
-	if user.IPAddress != "" {
+	if user.IPAssignMode == entities.IPAssignModeStatic && user.IPAddress != "" {
 		buf.WriteString(`<member><name>prop_static_ip</name><value><string>` + c.xmlEscape(user.IPAddress) + `</string></value></member>`)
 	}
 	if user.UserExpiration != "" {
 		buf.WriteString(`<member><name>user_expiration</name><value><string>` + c.xmlEscape(user.UserExpiration) + `</string></value></member>`)
-	}
-	if user.IPAddress != "" {
-		buf.WriteString(`<member><name>prop_static_ip</name><value><string>` + c.xmlEscape(user.IPAddress) + `</string></value></member>`)
 	}
 
 	// MAC addresses
@@ -433,7 +430,7 @@ func (c *UserClient) makeUserPropDelRequest(user *entities.User) string {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		buf.WriteString(`<value><string>` + c.xmlEscape(accessName) + `</string></value>`)
 	}
-	if user.IPAddress != "" || user.IPAssignMode != "" {
+	if user.IPAssignMode == entities.IPAssignModeStatic || user.IPAddress != "" {
 		buf.WriteString(`<value><string>prop_static_ip</string></value>`)
 	}
 	buf.WriteString(`</data></array></value></param>`)
