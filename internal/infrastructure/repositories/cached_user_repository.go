@@ -79,18 +79,22 @@ func (r *CachedUserRepository) Update(ctx context.Context, user *entities.User) 
 		return err
 	}
 
-	// 🔥 Write-through caching: Update cache immediately with fresh data
-	userKey := r.getUserKey(user.Username)
-	r.cache.SetAsync(ctx, userKey, user, redis.UserTTL)
+	// 🔥 Invalidate related caches immediately to avoid stale data
+	completeUser, err := r.repo.GetByUsername(ctx, user.Username)
+	if err != nil {
+		// If we can't get complete user, invalidate cache instead
+		logger.Log.WithField("username", user.Username).
+			WithError(err).
+			Warn("Failed to get complete user for cache after update, invalidating cache")
 
-	// 🔥 Async cache invalidation for related caches
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
-			logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after user update")
-		}
-	}()
+		userKey := r.getUserKey(user.Username)
+		r.cache.DelAsync(ctx, userKey)
+		return nil
+	}
+
+	// Cache complete object (not partial object)
+	userKey := r.getUserKey(user.Username)
+	r.cache.SetAsync(ctx, userKey, completeUser, redis.UserTTL)
 
 	logger.Log.WithField("username", user.Username).Debug("User updated, cache refreshed")
 	return nil
@@ -215,6 +219,13 @@ func (r *CachedUserRepository) ExistsByUsername(ctx context.Context, username st
 		return true, nil
 	}
 
+	// Check negative cache before hitting repository
+	negativeKey := fmt.Sprintf("user_not_exists:%s", username)
+	var notExists bool
+	if err := r.cache.Get(ctx, negativeKey, &notExists); err == nil && notExists {
+		return false, nil
+	}
+
 	// Cache miss - check repository
 	exists, err := r.repo.ExistsByUsername(ctx, username)
 	if err != nil {
@@ -223,8 +234,10 @@ func (r *CachedUserRepository) ExistsByUsername(ctx context.Context, username st
 
 	// 🔥 Cache negative results briefly to prevent repeated DB queries
 	if !exists {
-		negativeKey := fmt.Sprintf("user_not_exists:%s", username)
-		r.cache.SetAsync(ctx, negativeKey, false, 1*time.Minute)
+		r.cache.SetAsync(ctx, negativeKey, true, 1*time.Minute)
+	} else {
+		// remove stale negative entry if user exists
+		r.cache.DelAsync(ctx, negativeKey)
 	}
 
 	return exists, nil
@@ -293,14 +306,10 @@ func (r *CachedUserRepository) UserPropDel(ctx context.Context, user *entities.U
 		return err
 	}
 
-	// 🔥 Async cache invalidation
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
-			logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after UserPropDel")
-		}
-	}()
+	// 🔥 Invalidate caches synchronously to maintain update flow
+	if err := r.invalidateUserCaches(ctx, user.Username); err != nil {
+		logger.Log.WithField("username", user.Username).WithError(err).Warn("Failed to invalidate cache after UserPropDel")
+	}
 
 	return nil
 }
@@ -441,4 +450,20 @@ func (r *CachedUserRepository) isEmptyFilter(filter *entities.UserFilter) bool {
 		// Don't check pagination fields for emptiness
 		!filter.ExactMatch &&
 		!filter.CaseSensitive
+}
+
+// WarmupCache preloads commonly accessed users into cache
+func (r *CachedUserRepository) WarmupCache(ctx context.Context) error {
+	users, err := r.repo.List(ctx, &entities.UserFilter{Limit: 100})
+	if err != nil {
+		return err
+	}
+
+	kvs := make([]redis.KeyValue, 0, len(users)+1)
+	kvs = append(kvs, redis.KeyValue{Key: "users:list", Value: users, TTL: redis.ListTTL})
+	for _, u := range users {
+		kvs = append(kvs, redis.KeyValue{Key: r.getUserKey(u.Username), Value: u, TTL: redis.UserTTL})
+	}
+
+	return r.cache.SetMultiple(ctx, kvs)
 }

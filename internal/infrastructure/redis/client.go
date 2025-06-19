@@ -43,7 +43,9 @@ type Client struct {
 	// 🔥 Simple performance enhancements
 	writeQueue   chan writeOperation
 	workers      int
-	asyncEnabled bool // 🔥 Flag để enable/disable async operations khi có vấn đề
+	asyncEnabled bool           // 🔥 Flag để enable/disable async operations khi có vấn đề
+	stopChan     chan struct{}  // signal channel to stop monitorQueue
+	wg           sync.WaitGroup // wait group to ensure workers exit cleanly
 	metrics      struct {
 		hits   int64
 		misses int64
@@ -61,6 +63,13 @@ type writeOperation struct {
 	retry     int
 }
 
+// KeyValue represents a value to be cached with its TTL.
+type KeyValue struct {
+	Key   string
+	Value interface{}
+	TTL   time.Duration
+}
+
 func NewClient(cfg config.RedisConfig) (*Client, error) {
 	client := &Client{
 		enabled:      cfg.Enabled,
@@ -68,6 +77,7 @@ func NewClient(cfg config.RedisConfig) (*Client, error) {
 		workers:      5,                               // 🔥 Background workers for async operations
 		writeQueue:   make(chan writeOperation, 1000), // 🔥 Buffer for async operations
 		asyncEnabled: true,                            // 🔥 Enable async operations by default
+		stopChan:     make(chan struct{}),
 	}
 
 	if !cfg.Enabled {
@@ -98,7 +108,11 @@ func NewClient(cfg config.RedisConfig) (*Client, error) {
 	client.startAsyncWorkers()
 
 	// 🔥 Start queue monitor
-	go client.monitorQueue()
+	client.wg.Add(1)
+	go func() {
+		defer client.wg.Done()
+		client.monitorQueue()
+	}()
 
 	// Test connection
 	if err := client.Ping(context.Background()); err != nil {
@@ -121,7 +135,9 @@ func max(a, b int) int {
 // 🔥 Start background workers for async operations
 func (c *Client) startAsyncWorkers() {
 	for i := 0; i < c.workers; i++ {
+		c.wg.Add(1)
 		go func(workerID int) {
+			defer c.wg.Done()
 			for op := range c.writeQueue {
 				c.processAsyncOperation(op, workerID)
 			}
@@ -134,20 +150,26 @@ func (c *Client) monitorQueue() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		queueLen := len(c.writeQueue)
-		queueCap := cap(c.writeQueue)
-		usage := float64(queueLen) / float64(queueCap) * 100
+	for {
+		select {
+		case <-ticker.C:
+			queueLen := len(c.writeQueue)
+			queueCap := cap(c.writeQueue)
+			usage := float64(queueLen) / float64(queueCap) * 100
 
-		if usage > 80 {
-			logger.Log.WithField("queue_len", queueLen).
-				WithField("queue_cap", queueCap).
-				WithField("usage", fmt.Sprintf("%.1f%%", usage)).
-				Warn("Redis async queue is nearly full")
-		} else if usage > 50 {
-			logger.Log.WithField("queue_len", queueLen).
-				WithField("usage", fmt.Sprintf("%.1f%%", usage)).
-				Info("Redis async queue usage is moderate")
+			if usage > 80 {
+				logger.Log.WithField("queue_len", queueLen).
+					WithField("queue_cap", queueCap).
+					WithField("usage", fmt.Sprintf("%.1f%%", usage)).
+					Warn("Redis async queue is nearly full")
+			} else if usage > 50 {
+				logger.Log.WithField("queue_len", queueLen).
+					WithField("usage", fmt.Sprintf("%.1f%%", usage)).
+					Info("Redis async queue usage is moderate")
+			}
+		case <-c.stopChan:
+			logger.Log.Debug("Stopping Redis queue monitor")
+			return
 		}
 	}
 }
@@ -447,6 +469,35 @@ func (c *Client) DelMultiple(ctx context.Context, keys ...string) error {
 	return nil
 }
 
+// SetMultiple sets several key/value pairs using a pipeline for efficiency.
+func (c *Client) SetMultiple(ctx context.Context, kvs []KeyValue) error {
+	if !c.enabled || c.rdb == nil || len(kvs) == 0 {
+		return nil
+	}
+
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	pipe := c.rdb.Pipeline()
+
+	for _, kv := range kvs {
+		data, err := json.Marshal(kv.Value)
+		if err != nil {
+			c.incrementErrors()
+			return fmt.Errorf("failed to marshal value for key %s: %w", kv.Key, err)
+		}
+		pipe.Set(ctxWithTimeout, kv.Key, data, kv.TTL)
+	}
+
+	if _, err := pipe.Exec(ctxWithTimeout); err != nil {
+		c.incrementErrors()
+		return fmt.Errorf("failed to set multiple keys: %w", err)
+	}
+
+	logger.Log.WithField("count", len(kvs)).Debug("Multiple keys set via pipeline")
+	return nil
+}
+
 // Exists method - giữ nguyên từ code gốc
 func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 	if !c.enabled || c.rdb == nil {
@@ -496,28 +547,29 @@ func (c *Client) DeleteByPattern(ctx context.Context, pattern string) error {
 		return nil
 	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	// 🔥 Use SCAN instead of KEYS for large datasets to avoid blocking Redis
 	var cursor uint64
 	batchSize := 1000
 	totalDeleted := 0
 
 	for {
-		keys, nextCursor, err := c.rdb.Scan(ctxWithTimeout, cursor, pattern, int64(batchSize)).Result()
+		scanCtx, scanCancel := context.WithTimeout(ctx, 10*time.Second)
+		keys, nextCursor, err := c.rdb.Scan(scanCtx, cursor, pattern, int64(batchSize)).Result()
+		scanCancel()
 		if err != nil {
 			c.incrementErrors()
 			return fmt.Errorf("failed to scan keys with pattern %s: %w", pattern, err)
 		}
 
 		if len(keys) > 0 {
-			if err := c.rdb.Del(ctxWithTimeout, keys...).Err(); err != nil {
+			delCtx, delCancel := context.WithTimeout(ctx, 10*time.Second)
+			if err := c.rdb.Del(delCtx, keys...).Err(); err != nil {
 				c.incrementErrors()
 				logger.Log.WithError(err).WithField("pattern", pattern).Warn("Failed to delete some keys in batch")
 			} else {
 				totalDeleted += len(keys)
 			}
+			delCancel()
 		}
 
 		cursor = nextCursor
@@ -601,6 +653,14 @@ func (c *Client) Close() error {
 		close(c.writeQueue)
 	}
 
+	// Signal monitor goroutine to stop
+	if c.stopChan != nil {
+		close(c.stopChan)
+	}
+
+	// Wait for background workers and monitor to finish
+	c.wg.Wait()
+
 	if c.rdb != nil {
 		return c.rdb.Close()
 	}
@@ -629,11 +689,29 @@ func (c *Client) GetStats(ctx context.Context) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to get Redis info: %w", err)
 	}
 
-	// Count keys by pattern
-	userKeys, _ := c.rdb.Keys(ctxWithTimeout, "user:*").Result()
-	groupKeys, _ := c.rdb.Keys(ctxWithTimeout, "group:*").Result()
-	configKeys, _ := c.rdb.Keys(ctxWithTimeout, "config:*").Result()
-	filterKeys, _ := c.rdb.Keys(ctxWithTimeout, "*:filter:*").Result()
+	// Count keys by pattern using SCAN to avoid blocking
+	countKeys := func(pattern string) int {
+		var cursor uint64
+		count := 0
+		for {
+			keys, next, err := c.rdb.Scan(ctxWithTimeout, cursor, pattern, 1000).Result()
+			if err != nil {
+				logger.Log.WithError(err).WithField("pattern", pattern).Warn("Failed to scan keys for stats")
+				break
+			}
+			count += len(keys)
+			cursor = next
+			if cursor == 0 {
+				break
+			}
+		}
+		return count
+	}
+
+	userCount := countKeys("user:*")
+	groupCount := countKeys("group:*")
+	configCount := countKeys("config:*")
+	filterCount := countKeys("*:filter:*")
 
 	// Get performance metrics
 	metrics := c.GetMetrics()
@@ -642,10 +720,10 @@ func (c *Client) GetStats(ctx context.Context) (map[string]interface{}, error) {
 		"enabled": true,
 		"info":    info,
 		"key_counts": map[string]int{
-			"users":   len(userKeys),
-			"groups":  len(groupKeys),
-			"config":  len(configKeys),
-			"filters": len(filterKeys),
+			"users":   userCount,
+			"groups":  groupCount,
+			"config":  configCount,
+			"filters": filterCount,
 		},
 		"ttl_settings": map[string]string{
 			"user_ttl":       UserTTL.String(),
