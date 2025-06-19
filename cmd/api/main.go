@@ -149,6 +149,7 @@ func main() {
 	// Initialize middleware with shared JWT service
 	authMiddleware := middleware.NewAuthMiddlewareWithJWTService(jwtService)
 	corsMiddleware := middleware.NewCorsMiddleware()
+	validationMiddleware := middleware.NewValidationMiddleware()
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)
@@ -172,6 +173,7 @@ func main() {
 		searchHandler,
 		authMiddleware,
 		corsMiddleware,
+		validationMiddleware,
 		vpnStatusHandler,
 		disconnectHandler,
 		configHandler,

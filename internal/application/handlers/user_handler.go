@@ -178,12 +178,20 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	// Reject empty update payloads
+	if req.UserExpiration == "" && req.DenyAccess == nil && req.MacAddresses == nil &&
+		req.AccessControl == nil && req.GroupName == "" {
+		respondWithError(c, errors.BadRequest("No update fields provided", nil))
+		return
+	}
+
 	// Convert DTO to entity (password handled separately above)
 	user := &entities.User{
 		Username:       username,
 		UserExpiration: req.UserExpiration,
 		MacAddresses:   req.MacAddresses,
 		AccessControl:  req.AccessControl,
+		GroupName:      req.GroupName,
 	}
 
 	if req.DenyAccess != nil {

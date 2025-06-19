@@ -12,17 +12,18 @@ import (
 )
 
 type RouterUpdated struct {
-	authHandler       *handlers.AuthHandler
-	userHandler       *handlers.UserHandler
-	groupHandler      *handlers.GroupHandler
-	bulkHandler       *handlers.BulkHandler   // NEW: Bulk operations handler
-	searchHandler     *handlers.SearchHandler // NEW: Advanced search handler
-	authMiddleware    *middleware.AuthMiddleware
-	corsMiddleware    *middleware.CorsMiddleware
-	vpnStatusHandler  *handlers.VPNStatusHandler
-	disconnectHandler *handlers.DisconnectHandler
-	configHandler     *handlers.ConfigHandler
-	cacheHandler      *handlers.CacheHandler // NEW: Cache handler for Redis
+	authHandler          *handlers.AuthHandler
+	userHandler          *handlers.UserHandler
+	groupHandler         *handlers.GroupHandler
+	bulkHandler          *handlers.BulkHandler   // NEW: Bulk operations handler
+	searchHandler        *handlers.SearchHandler // NEW: Advanced search handler
+	authMiddleware       *middleware.AuthMiddleware
+	corsMiddleware       *middleware.CorsMiddleware
+	validationMiddleware *middleware.ValidationMiddleware // NEW: Reject unknown fields
+	vpnStatusHandler     *handlers.VPNStatusHandler
+	disconnectHandler    *handlers.DisconnectHandler
+	configHandler        *handlers.ConfigHandler
+	cacheHandler         *handlers.CacheHandler // NEW: Cache handler for Redis
 }
 
 func NewRouterUpdated(
@@ -33,6 +34,7 @@ func NewRouterUpdated(
 	searchHandler *handlers.SearchHandler, // NEW: Search handler injection
 	authMiddleware *middleware.AuthMiddleware,
 	corsMiddleware *middleware.CorsMiddleware,
+	validationMiddleware *middleware.ValidationMiddleware,
 	vpnStatusHandler *handlers.VPNStatusHandler,
 	disconnectHandler *handlers.DisconnectHandler,
 	configHandler *handlers.ConfigHandler, // NEW: Config handler injection
@@ -40,17 +42,18 @@ func NewRouterUpdated(
 
 ) *RouterUpdated {
 	return &RouterUpdated{
-		authHandler:       authHandler,
-		userHandler:       userHandler,
-		groupHandler:      groupHandler,
-		bulkHandler:       bulkHandler,   // NEW
-		searchHandler:     searchHandler, // NEW
-		authMiddleware:    authMiddleware,
-		corsMiddleware:    corsMiddleware,
-		vpnStatusHandler:  vpnStatusHandler,
-		disconnectHandler: disconnectHandler,
-		configHandler:     configHandler, // NEW
-		cacheHandler:      cacheHandler,  // NEW
+		authHandler:          authHandler,
+		userHandler:          userHandler,
+		groupHandler:         groupHandler,
+		bulkHandler:          bulkHandler,   // NEW
+		searchHandler:        searchHandler, // NEW
+		authMiddleware:       authMiddleware,
+		corsMiddleware:       corsMiddleware,
+		validationMiddleware: validationMiddleware,
+		vpnStatusHandler:     vpnStatusHandler,
+		disconnectHandler:    disconnectHandler,
+		configHandler:        configHandler, // NEW
+		cacheHandler:         cacheHandler,  // NEW
 	}
 }
 
@@ -69,6 +72,8 @@ func (r *RouterUpdated) SetupRoutes() *gin.Engine {
 	router.Use(gin.Recovery())
 	router.Use(r.corsMiddleware.Handler())
 	router.Use(r.corsMiddleware.SecurityHeaders())
+	// Reject unknown fields in JSON requests
+	router.Use(r.validationMiddleware.StrictJSONBinding())
 
 	// Timeout middleware
 	router.Use(timeout.New(

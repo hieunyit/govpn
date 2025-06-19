@@ -35,9 +35,12 @@ func (u *userUsecaseImpl) CreateUser(ctx context.Context, user *entities.User) e
 		WithField("authMethod", user.AuthMethod).
 		Info("Creating user")
 
-	// Check if user already exists
+		// Check if user already exists
 	existingUser, err := u.userRepo.ExistsByUsername(ctx, user.Username)
-	if existingUser && err == nil {
+	if err != nil {
+		return errors.InternalServerError("Failed to check user existence", err)
+	}
+	if existingUser {
 		return errors.Conflict("User already exists", nil)
 	}
 	if user.GroupName != "" {
@@ -213,6 +216,13 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 			Debug("Updating deny access")
 	}
 
+	if user.GroupName != "" {
+		updateUser.GroupName = user.GroupName
+		logger.Log.WithField("username", user.Username).
+			WithField("groupName", user.GroupName).
+			Debug("Updating group name")
+	}
+
 	// Update user in repository
 	if err := u.userRepo.Update(ctx, updateUser); err != nil {
 		return errors.InternalServerError("Failed to update user", err)
@@ -260,12 +270,17 @@ func (u *userUsecaseImpl) GetUserExpirations(ctx context.Context, days int) (*dt
 			}
 		}
 
-		// Calculate days until expiry
+		// Calculate days until expiry (negative if already expired)
 		daysUntilExpiry := int(expirationTime.Sub(currentTime).Hours() / 24)
 
-		// ✅ FIX: Check if user expires within the target date range
-		if expirationTime.After(targetDate) && !expirationTime.Before(currentTime) {
-			continue // Not expiring within the specified period
+		// Skip users expiring after the target date
+		if expirationTime.After(targetDate) {
+			continue
+		}
+
+		// Skip users that expired before the range window
+		if daysUntilExpiry < 0 && -daysUntilExpiry > days {
+			continue
 		}
 
 		// Determine expiration status
