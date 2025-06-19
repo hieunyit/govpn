@@ -64,6 +64,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		respondWithError(c, errors.BadRequest(err.Error(), err))
 		return
 	}
+	if req.IPAssignMode == entities.IPAssignModeDynamic && req.IPAddress != "" {
+		respondWithError(
+			c,
+			errors.BadRequest("Cannot provide ipAddress when using dynamic IP assignment", nil),
+		)
+		return
+	}
 
 	// Convert DTO to entity
 	user := &entities.User{
@@ -75,6 +82,8 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		MacAddresses:   req.MacAddresses,
 		GroupName:      req.GroupName,
 		AccessControl:  req.AccessControl,
+		IPAddress:      req.IPAddress,
+		IPAssignMode:   req.IPAssignMode,
 	}
 
 	logger.Log.WithField("username", user.Username).
@@ -185,6 +194,8 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		MacAddresses:   req.MacAddresses,
 		AccessControl:  req.AccessControl,
 		GroupName:      req.GroupName,
+		IPAddress:      req.IPAddress,
+		IPAssignMode:   req.IPAssignMode,
 	}
 
 	if req.DenyAccess != nil {
@@ -596,6 +607,7 @@ func (h *UserHandler) convertUserToResponse(user *entities.User) dto.UserRespons
 		DenyAccess:     user.DenyAccess == "true",
 		AccessControl:  user.AccessControl,
 		GroupName:      user.GroupName,
+		IPAddress:      user.IPAddress,
 		IsEnabled:      user.DenyAccess != "true",
 	}
 
@@ -687,10 +699,9 @@ func (h *UserHandler) validateAuthSpecificRequirements(req *dto.CreateUserReques
 		}
 	case "ldap":
 		if strings.TrimSpace(req.Password) != "" {
-			logger.Log.WithField("username", req.Username).
-				Warn("Password provided for LDAP user - clearing password")
-			req.Password = "" // Clear password for LDAP users
+			return fmt.Errorf("password must not be provided for LDAP users")
 		}
+
 	default:
 		return fmt.Errorf("invalid authentication method: %s. Must be 'local' or 'ldap'", req.AuthMethod)
 	}

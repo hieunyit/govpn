@@ -534,6 +534,15 @@ definitions:
       groupName:
         example: TEST_GR
         type: string
+      ipAddress:
+        example: 10.0.0.10
+        type: string
+      ipAssignMode:
+        enum:
+        - dynamic
+        - static
+        example: static
+        type: string
       macAddresses:
         example:
         - 5E:CD:C9:D4:88:65
@@ -554,6 +563,7 @@ definitions:
     required:
     - authMethod
     - email
+    - ipAssignMode
     - macAddresses
     - userExpiration
     - username
@@ -1168,6 +1178,15 @@ definitions:
       groupName:
         example: TEST_GR
         type: string
+      ipAddress:
+        example: 10.0.0.10
+        type: string
+      ipAssignMode:
+        enum:
+        - dynamic
+        - static
+        example: static
+        type: string
       macAddresses:
         example:
         - 5E:CD:C9:D4:88:65
@@ -1401,6 +1420,12 @@ definitions:
         type: string
       groupName:
         example: TEST_GR
+        type: string
+      ipAddress:
+        example: 10.0.0.10
+        type: string
+      ipAssignMode:
+        example: static
         type: string
       isEnabled:
         description: 'NEW: Computed fields for enhanced filtering'

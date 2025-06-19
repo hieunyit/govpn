@@ -3050,6 +3050,7 @@
             "required": [
                 "authMethod",
                 "email",
+                "ipAssignMode",
                 "macAddresses",
                 "userExpiration",
                 "username"
@@ -3079,6 +3080,18 @@
                 "groupName": {
                     "type": "string",
                     "example": "TEST_GR"
+                },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.0.0.10"
+                },
+                "ipAssignMode": {
+                    "type": "string",
+                    "enum": [
+                        "dynamic",
+                        "static"
+                    ],
+                    "example": "static"
                 },
                 "macAddresses": {
                     "type": "array",
@@ -3963,6 +3976,18 @@
                     "type": "string",
                     "example": "TEST_GR"
                 },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.0.0.10"
+                },
+                "ipAssignMode": {
+                    "type": "string",
+                    "enum": [
+                        "dynamic",
+                        "static"
+                    ],
+                    "example": "static"
+                },
                 "macAddresses": {
                     "type": "array",
                     "items": {
@@ -4287,6 +4312,14 @@
                 "groupName": {
                     "type": "string",
                     "example": "TEST_GR"
+                },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.0.0.10"
+                },
+                "ipAssignMode": {
+                    "type": "string",
+                    "example": "static"
                 },
                 "isEnabled": {
                     "description": "NEW: Computed fields for enhanced filtering",

@@ -69,8 +69,9 @@ func (c *UserClient) ExistsByEmail(email string) (bool, error) {
 
 	resp, err := c.Call(xmlRequest)
 	if err != nil {
-		return false, fmt.Errorf("failed to get user: %w", err)
+		return false, fmt.Errorf("failed to get all: %w", err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -87,7 +88,7 @@ func (c *UserClient) ExistsByEmail(email string) (bool, error) {
 	if strings.Contains(string(body), email) {
 		return true, nil
 	}
-	return false, fmt.Errorf("email not found: %s", email)
+	return false, nil
 }
 
 func (c *UserClient) GetAllUsers() ([]*entities.User, error) {
@@ -311,6 +312,9 @@ func (c *UserClient) makeCreateUserRequest(user *entities.User) string {
 	if user.UserExpiration != "" {
 		buf.WriteString(`<member><name>user_expiration</name><value><string>` + c.xmlEscape(user.UserExpiration) + `</string></value></member>`)
 	}
+	if user.IPAddress != "" {
+		buf.WriteString(`<member><name>conn_ip</name><value><string>` + c.xmlEscape(user.IPAddress) + `</string></value></member>`)
+	}
 
 	// MAC addresses
 	for i, mac := range user.MacAddresses {
@@ -374,7 +378,9 @@ func (c *UserClient) makeUpdateUserRequest(user *entities.User) string {
 	if user.GroupName != "" {
 		buf.WriteString(`<member><name>conn_group</name><value><string>` + c.xmlEscape(user.GroupName) + `</string></value></member>`)
 	}
-
+	if user.IPAddress != "" {
+		buf.WriteString(`<member><name>conn_ip</name><value><string>` + c.xmlEscape(user.IPAddress) + `</string></value></member>`)
+	}
 	// MAC addresses
 	for i, mac := range user.MacAddresses {
 		if i >= 5 {
@@ -426,6 +432,9 @@ func (c *UserClient) makeUserPropDelRequest(user *entities.User) string {
 	for i, _ := range user.AccessControl {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		buf.WriteString(`<value><string>` + c.xmlEscape(accessName) + `</string></value>`)
+	}
+	if user.IPAddress != "" {
+		buf.WriteString(`<value><string>conn_ip</string></value>`)
 	}
 	buf.WriteString(`</data></array></value></param>`)
 	buf.WriteString(`</params></methodCall>`)
@@ -579,6 +588,8 @@ func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.
 			user.Email = member.Value
 		case member.Name == "user_expiration":
 			user.UserExpiration = member.Value
+		case member.Name == "conn_ip":
+			user.IPAddress = member.Value
 		case member.Name == "prop_superuser":
 			if member.Value == "true" {
 				user.Role = entities.UserRoleAdmin
@@ -587,7 +598,6 @@ func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.
 			user.AccessControl = append(user.AccessControl, strings.TrimPrefix(member.Value, "+NAT:"))
 		}
 	}
-
 	return user, nil
 }
 
@@ -652,6 +662,8 @@ func (c *UserClient) parseAllUsersResponse(body []byte) ([]*entities.User, error
 				user.Email = data.Value
 			case data.Name == "user_expiration":
 				user.UserExpiration = data.Value
+			case data.Name == "conn_ip":
+				user.IPAddress = data.Value
 			case data.Name == "prop_superuser":
 				if data.Value == "true" {
 					user.Role = entities.UserRoleAdmin

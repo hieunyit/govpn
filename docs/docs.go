@@ -3056,6 +3056,7 @@ const docTemplate = `{
             "required": [
                 "authMethod",
                 "email",
+                "ipAssignMode",
                 "macAddresses",
                 "userExpiration",
                 "username"
@@ -3085,6 +3086,18 @@ const docTemplate = `{
                 "groupName": {
                     "type": "string",
                     "example": "TEST_GR"
+                },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.0.0.10"
+                },
+                "ipAssignMode": {
+                    "type": "string",
+                    "enum": [
+                        "dynamic",
+                        "static"
+                    ],
+                    "example": "static"
                 },
                 "macAddresses": {
                     "type": "array",
@@ -3969,6 +3982,18 @@ const docTemplate = `{
                     "type": "string",
                     "example": "TEST_GR"
                 },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.0.0.10"
+                },
+                "ipAssignMode": {
+                    "type": "string",
+                    "enum": [
+                        "dynamic",
+                        "static"
+                    ],
+                    "example": "static"
+                },
                 "macAddresses": {
                     "type": "array",
                     "items": {
@@ -4293,6 +4318,14 @@ const docTemplate = `{
                 "groupName": {
                     "type": "string",
                     "example": "TEST_GR"
+                },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.0.0.10"
+                },
+                "ipAssignMode": {
+                    "type": "string",
+                    "example": "static"
                 },
                 "isEnabled": {
                     "description": "NEW: Computed fields for enhanced filtering",

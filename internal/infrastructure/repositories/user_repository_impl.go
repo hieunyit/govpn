@@ -56,7 +56,6 @@ func (r *userRepositoryImpl) GetByUsername(ctx context.Context, username string)
 		logger.Log.WithField("username", username).WithError(err).Error("Failed to get user")
 		return nil, errors.NotFound("User not found", err)
 	}
-
 	return user, nil
 }
 

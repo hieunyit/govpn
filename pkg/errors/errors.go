@@ -31,6 +31,7 @@ type AppError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Status  int    `json:"status"`
+	Details string `json:"details,omitempty"`
 	Err     error  `json:"-"`
 }
 
@@ -47,12 +48,16 @@ func (e *AppError) Unwrap() error {
 
 // NewAppError creates a new application error
 func NewAppError(code, message string, status int, err error) *AppError {
-	return &AppError{
+	ae := &AppError{
 		Code:    code,
 		Message: message,
 		Status:  status,
-		Err:     err,
 	}
+	if err != nil {
+		ae.Details = err.Error()
+		ae.Err = err
+	}
+	return ae
 }
 
 // Common error constructors
