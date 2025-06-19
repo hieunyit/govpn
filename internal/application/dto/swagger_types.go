@@ -17,6 +17,7 @@ type ErrorResponse struct {
 		Code    string `json:"code" example:"BAD_REQUEST"`
 		Message string `json:"message" example:"Invalid request format"`
 		Status  int    `json:"status" example:"400"`
+		Details string `json:"details,omitempty" example:"validation failed"`
 	} `json:"error"`
 }
 
