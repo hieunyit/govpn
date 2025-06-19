@@ -160,8 +160,8 @@ func main() {
 	disconnectHandler := handlers.NewDisconnectHandler(disconnectUsecase)
 	configHandler := handlers.NewConfigHandler(configUsecase)
 
-	// ✅ ENHANCED: Initialize cache handler
-	cacheHandler := handlers.NewCacheHandler(redisClient)
+	// ✅ ENHANCED: Initialize cache handler with repositories
+	cacheHandler := handlers.NewCacheHandler(redisClient, userRepo, groupRepo, configRepo)
 
 	// Initialize router with all handlers
 	router := httpRouter.NewRouterUpdated(
@@ -187,6 +187,20 @@ func main() {
 			logger.Log.Info("Starting cache warmup in background")
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+
+			// Warm up user cache
+			if cachedUserRepo, ok := userRepo.(*xmlrpcRepositories.CachedUserRepository); ok {
+				if err := cachedUserRepo.WarmupCache(ctx); err != nil {
+					logger.Log.WithError(err).Warn("Failed to warm up user cache")
+				}
+			}
+
+			// Warm up group cache
+			if cachedGroupRepo, ok := groupRepo.(*xmlrpcRepositories.CachedGroupRepository); ok {
+				if err := cachedGroupRepo.WarmupCache(ctx); err != nil {
+					logger.Log.WithError(err).Warn("Failed to warm up group cache")
+				}
+			}
 
 			// Warm up config cache (most important)
 			if cachedConfigRepo, ok := configRepo.(*xmlrpcRepositories.CachedConfigRepository); ok {
