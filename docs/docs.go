@@ -1727,6 +1727,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Filter by IP address",
+                        "name": "ipAddress",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Search across username, email, group",
                         "name": "searchText",
                         "in": "query"
@@ -3247,6 +3253,10 @@ const docTemplate = `{
                             "type": "string",
                             "example": "BAD_REQUEST"
                         },
+                        "details": {
+                            "type": "string",
+                            "example": "validation failed"
+                        },
                         "message": {
                             "type": "string",
                             "example": "Invalid request format"
@@ -4150,6 +4160,10 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": true
                 },
+                "ipAddress": {
+                    "type": "string",
+                    "example": "10.10.10.10"
+                },
                 "isEnabled": {
                     "description": "NEW: Status filters",
                     "type": "boolean",
@@ -4322,10 +4336,6 @@ const docTemplate = `{
                 "ipAddress": {
                     "type": "string",
                     "example": "10.0.0.10"
-                },
-                "ipAssignMode": {
-                    "type": "string",
-                    "example": "static"
                 },
                 "isEnabled": {
                     "description": "NEW: Computed fields for enhanced filtering",

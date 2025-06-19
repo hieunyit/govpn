@@ -293,6 +293,17 @@ func (r *userRepositoryImpl) matchesFilter(user *entities.User, filter *entities
 			return false
 		}
 	}
+	if filter.IPAddress != "" {
+		if filter.ExactMatch {
+			if user.IPAddress != filter.IPAddress {
+				return false
+			}
+		} else {
+			if !strings.Contains(strings.ToLower(user.IPAddress), strings.ToLower(filter.IPAddress)) {
+				return false
+			}
+		}
+	}
 
 	// NEW: Search text (across multiple fields)
 	if filter.SearchText != "" {

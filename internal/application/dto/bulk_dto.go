@@ -135,6 +135,8 @@ type UserCSVRecord struct {
 	UserExpiration string `csv:"user_expiration" example:"31/12/2024"`
 	MacAddresses   string `csv:"mac_addresses" example:"AA:BB:CC:DD:EE:FF,11:22:33:44:55:66"`
 	AccessControl  string `csv:"access_control,omitempty" example:"192.168.1.0/24,10.0.0.0/8"`
+	IPAssignMode   string `csv:"ip_assign_mode" example:"dynamic"`
+	IPAddress      string `csv:"ip_address,omitempty" example:"10.0.0.10"`
 }
 
 // GroupCSVRecord represents a group record in CSV format - UPDATED with new fields

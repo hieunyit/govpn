@@ -179,7 +179,7 @@ func (r *CachedUserRepository) List(ctx context.Context, filter *entities.UserFi
 // 🔥 Smart filter caching strategy - only cache common filters
 func (r *CachedUserRepository) shouldCacheFilter(filter *entities.UserFilter) bool {
 	// Don't cache very specific searches (likely one-time queries)
-	if filter.Username != "" || filter.Email != "" || filter.MacAddress != "" {
+	if filter.Username != "" || filter.Email != "" || filter.MacAddress != "" || filter.IPAddress != "" {
 		return false
 	}
 
@@ -445,6 +445,7 @@ func (r *CachedUserRepository) isEmptyFilter(filter *entities.UserFilter) bool {
 		filter.ExpiringInDays == nil &&
 		filter.HasAccessControl == nil &&
 		filter.MacAddress == "" &&
+		filter.IPAddress == "" &&
 		filter.SearchText == "" &&
 		filter.SortBy == "" &&
 		// Don't check pagination fields for emptiness

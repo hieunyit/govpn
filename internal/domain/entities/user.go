@@ -41,6 +41,7 @@ type UserFilter struct {
 	HasAccessControl *bool  `json:"hasAccessControl" form:"hasAccessControl"` // Based on AccessControl field
 	MacAddress       string `json:"macAddress" form:"macAddress"`             // Based on MacAddresses field
 	SearchText       string `json:"searchText" form:"searchText"`             // Search across username, email
+	IPAddress        string `json:"ipAddress" form:"ipAddress"`
 
 	// Sorting & pagination
 	SortBy    string `json:"sortBy" form:"sortBy" binding:"omitempty,oneof=username email authMethod role groupName userExpiration"`

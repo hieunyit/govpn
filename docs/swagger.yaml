@@ -653,6 +653,9 @@ definitions:
           code:
             example: BAD_REQUEST
             type: string
+          details:
+            example: validation failed
+            type: string
           message:
             example: Invalid request format
             type: string
@@ -1298,6 +1301,9 @@ definitions:
         description: Include expired users
         example: true
         type: boolean
+      ipAddress:
+        example: 10.10.10.10
+        type: string
       isEnabled:
         description: 'NEW: Status filters'
         example: true
@@ -1423,9 +1429,6 @@ definitions:
         type: string
       ipAddress:
         example: 10.0.0.10
-        type: string
-      ipAssignMode:
-        example: static
         type: string
       isEnabled:
         description: 'NEW: Computed fields for enhanced filtering'
@@ -2582,6 +2585,10 @@ paths:
       - description: Filter by MAC address
         in: query
         name: macAddress
+        type: string
+      - description: Filter by IP address
+        in: query
+        name: ipAddress
         type: string
       - description: Search across username, email, group
         in: query

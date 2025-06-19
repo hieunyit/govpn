@@ -401,6 +401,7 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 // @Param expiringInDays query int false "Users expiring within X days"
 // @Param hasAccessControl query boolean false "Filter by access control presence"
 // @Param macAddress query string false "Filter by MAC address"
+// @Param ipAddress query string false "Filter by IP address"
 // @Param searchText query string false "Search across username, email, group"
 // @Param sortBy query string false "Sort field" Enums(username, email, authMethod, role, groupName, userExpiration) default(username)
 // @Param sortOrder query string false "Sort order" Enums(asc, desc) default(asc)
@@ -551,6 +552,12 @@ func (h *UserHandler) validateUserFilter(filter *dto.UserFilter) error {
 			return errors.BadRequest("Invalid MAC address format", nil)
 		}
 	}
+	if filter.IPAddress != "" {
+		ipPattern := `^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`
+		if matched, _ := regexp.MatchString(ipPattern, filter.IPAddress); !matched {
+			return errors.BadRequest("Invalid IP address format", nil)
+		}
+	}
 
 	return nil
 }
@@ -580,6 +587,7 @@ func (h *UserHandler) convertToEntityFilter(dtoFilter *dto.UserFilter) *entities
 		HasAccessControl: dtoFilter.HasAccessControl,
 		MacAddress:       dtoFilter.MacAddress,
 		SearchText:       dtoFilter.SearchText,
+		IPAddress:        dtoFilter.IPAddress,
 
 		// Sorting & pagination
 		SortBy:    dtoFilter.SortBy,

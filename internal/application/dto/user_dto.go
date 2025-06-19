@@ -58,9 +58,10 @@ type UserFilter struct {
 	GroupName  string `form:"groupName" example:"TEST_GR"`
 
 	// NEW: Status filters
-	IsEnabled  *bool `form:"isEnabled" example:"true"`   // Filter by enabled status
-	DenyAccess *bool `form:"denyAccess" example:"false"` // Filter by access denial status
-	MFAEnabled *bool `form:"mfaEnabled" example:"true"`  // Filter by MFA status
+	IsEnabled  *bool  `form:"isEnabled" example:"true"`   // Filter by enabled status
+	DenyAccess *bool  `form:"denyAccess" example:"false"` // Filter by access denial status
+	MFAEnabled *bool  `form:"mfaEnabled" example:"true"`  // Filter by MFA status
+	IPAddress  string `form:"ipAddress" validate:"omitempty,ipv4" example:"10.10.10.10"`
 
 	// NEW: Expiration filters
 	UserExpirationAfter  *time.Time `form:"userExpirationAfter" time_format:"2006-01-02" example:"2025-06-17"`  // Users expiring after date
@@ -307,6 +308,7 @@ func GetUserFilterExamples() UserFilterExamples {
 			Limit:      20,
 			SortBy:     "username",
 			SortOrder:  "asc",
+			IPAddress:  "10.0.0.10",
 		},
 		Status: UserFilter{
 			IsEnabled:  boolPtr(false),
