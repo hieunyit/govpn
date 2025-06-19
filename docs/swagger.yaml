@@ -540,6 +540,15 @@ definitions:
         items:
           type: string
         type: array
+      ipAddress:
+        example: 10.0.0.10
+        type: string
+      ipAssignMode:
+        enum:
+        - dynamic
+        - static
+        example: dynamic
+        type: string
       password:
         example: SecurePass123!
         type: string
@@ -556,6 +565,7 @@ definitions:
     - email
     - macAddresses
     - userExpiration
+    - ipAssignMode
     - username
     type: object
   dto.DisconnectResponse:
@@ -1177,6 +1187,15 @@ definitions:
       userExpiration:
         example: 31/12/2025
         type: string
+      ipAddress:
+        example: 10.0.0.10
+        type: string
+      ipAssignMode:
+        enum:
+        - dynamic
+        - static
+        example: dynamic
+        type: string
     type: object
   dto.UserConnectionInfo:
     properties:
@@ -1401,6 +1420,12 @@ definitions:
         type: string
       groupName:
         example: TEST_GR
+        type: string
+      ipAddress:
+        example: 10.0.0.10
+        type: string
+      ipAssignMode:
+        example: dynamic
         type: string
       isEnabled:
         description: 'NEW: Computed fields for enhanced filtering'

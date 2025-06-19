@@ -14,6 +14,8 @@ type User struct {
 	Role           string   `json:"role"`
 	DenyAccess     string   `json:"denyAccess"`
 	AccessControl  []string `json:"accessControl"`
+	IPAddress      string   `json:"ipAddress"`
+	IPAssignMode   string   `json:"ipAssignMode"`
 }
 
 type UserFilter struct {
@@ -83,6 +85,12 @@ const (
 	AuthMethodLDAP  = "ldap"
 )
 
+// IP assignment modes
+const (
+	IPAssignModeDynamic = "dynamic"
+	IPAssignModeStatic  = "static"
+)
+
 // Methods
 func (u *User) IsAdmin() bool {
 	return u.Role == UserRoleAdmin
@@ -130,12 +138,13 @@ func (u *User) SetMFA(enabled bool) {
 
 func NewUser(username, email, authMethod, groupName string) *User {
 	return &User{
-		Username:   username,
-		Email:      email,
-		AuthMethod: authMethod,
-		GroupName:  groupName,
-		Role:       UserRoleUser,
-		DenyAccess: "false",
-		MFA:        "true",
+		Username:     username,
+		Email:        email,
+		AuthMethod:   authMethod,
+		GroupName:    groupName,
+		Role:         UserRoleUser,
+		DenyAccess:   "false",
+		MFA:          "true",
+		IPAssignMode: IPAssignModeDynamic,
 	}
 }

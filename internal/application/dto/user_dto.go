@@ -14,6 +14,8 @@ type CreateUserRequest struct {
 	UserExpiration string   `json:"userExpiration" validate:"required,date" example:"31/12/2024"`
 	MacAddresses   []string `json:"macAddresses" validate:"required,dive,mac_address" example:"5E:CD:C9:D4:88:65"`
 	AccessControl  []string `json:"accessControl,omitempty" validate:"omitempty,dive,ipv4|cidrv4|ipv4_protocol" example:"192.168.1.0/24"`
+	IPAddress      string   `json:"ipAddress,omitempty" validate:"omitempty,ipv4" example:"10.0.0.10"`
+	IPAssignMode   string   `json:"ipAssignMode" validate:"required,oneof=dynamic static" example:"dynamic"`
 }
 
 type UpdateUserRequest struct {
@@ -22,6 +24,8 @@ type UpdateUserRequest struct {
 	MacAddresses   []string `json:"macAddresses,omitempty" validate:"omitempty,dive,mac_address" example:"5E:CD:C9:D4:88:65"`
 	AccessControl  []string `json:"accessControl,omitempty" validate:"omitempty,dive,ipv4|cidrv4|ipv4_protocol" example:"192.168.1.0/24"`
 	GroupName      string   `json:"groupName,omitempty" example:"TEST_GR"`
+	IPAddress      string   `json:"ipAddress,omitempty" validate:"omitempty,ipv4" example:"10.0.0.10"`
+	IPAssignMode   string   `json:"ipAssignMode,omitempty" validate:"omitempty,oneof=dynamic static" example:"dynamic"`
 }
 
 // Enhanced UserResponse with computed fields
@@ -36,6 +40,8 @@ type UserResponse struct {
 	DenyAccess     bool     `json:"denyAccess" example:"false"`
 	AccessControl  []string `json:"accessControl" example:"192.168.1.0/24"`
 	GroupName      string   `json:"groupName" example:"TEST_GR"`
+	IPAddress      string   `json:"ipAddress" example:"10.0.0.10"`
+	IPAssignMode   string   `json:"ipAssignMode" example:"dynamic"`
 
 	// NEW: Computed fields for enhanced filtering
 	IsEnabled    bool `json:"isEnabled" example:"true"`         // Inverse of DenyAccess
@@ -167,6 +173,9 @@ func (r CreateUserRequest) GetValidationErrors() map[string]string {
 		"MacAddresses.mac_address":   "MAC address must be in format XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX",
 		"AccessControl.ipv4":         "Access control must be valid IPv4 address",
 		"AccessControl.cidrv4":       "Access control must be valid CIDR notation",
+		"IPAssignMode.required":      "IP assign mode is required",
+		"IPAssignMode.oneof":         "IP assign mode must be 'dynamic' or 'static'",
+		"IPAddress.ipv4":             "IP address must be a valid IPv4 address",
 	}
 }
 
@@ -177,6 +186,8 @@ func (r UpdateUserRequest) GetValidationErrors() map[string]string {
 		"MacAddresses.mac_address": "MAC address must be in format XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX",
 		"AccessControl.ipv4":       "Access control must be valid IPv4 address",
 		"AccessControl.cidrv4":     "Access control must be valid CIDR notation",
+		"IPAssignMode.oneof":       "IP assign mode must be 'dynamic' or 'static'",
+		"IPAddress.ipv4":           "IP address must be a valid IPv4 address",
 	}
 }
 

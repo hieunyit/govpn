@@ -75,6 +75,8 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		MacAddresses:   req.MacAddresses,
 		GroupName:      req.GroupName,
 		AccessControl:  req.AccessControl,
+		IPAddress:      req.IPAddress,
+		IPAssignMode:   req.IPAssignMode,
 	}
 
 	logger.Log.WithField("username", user.Username).
@@ -185,6 +187,8 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		MacAddresses:   req.MacAddresses,
 		AccessControl:  req.AccessControl,
 		GroupName:      req.GroupName,
+		IPAddress:      req.IPAddress,
+		IPAssignMode:   req.IPAssignMode,
 	}
 
 	if req.DenyAccess != nil {

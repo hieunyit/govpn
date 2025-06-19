@@ -308,8 +308,14 @@ func (c *UserClient) makeCreateUserRequest(user *entities.User) string {
 	if user.GroupName != "" {
 		buf.WriteString(`<member><name>conn_group</name><value><string>` + c.xmlEscape(user.GroupName) + `</string></value></member>`)
 	}
+	if user.IPAddress != "" {
+		buf.WriteString(`<member><name>prop_static_ip</name><value><string>` + c.xmlEscape(user.IPAddress) + `</string></value></member>`)
+	}
 	if user.UserExpiration != "" {
 		buf.WriteString(`<member><name>user_expiration</name><value><string>` + c.xmlEscape(user.UserExpiration) + `</string></value></member>`)
+	}
+	if user.IPAddress != "" {
+		buf.WriteString(`<member><name>prop_static_ip</name><value><string>` + c.xmlEscape(user.IPAddress) + `</string></value></member>`)
 	}
 
 	// MAC addresses
@@ -426,6 +432,9 @@ func (c *UserClient) makeUserPropDelRequest(user *entities.User) string {
 	for i, _ := range user.AccessControl {
 		accessName := fmt.Sprintf("access_to.%d", i)
 		buf.WriteString(`<value><string>` + c.xmlEscape(accessName) + `</string></value>`)
+	}
+	if user.IPAddress != "" || user.IPAssignMode != "" {
+		buf.WriteString(`<value><string>prop_static_ip</string></value>`)
 	}
 	buf.WriteString(`</data></array></value></param>`)
 	buf.WriteString(`</params></methodCall>`)
@@ -579,6 +588,8 @@ func (c *UserClient) parseUserResponse(username string, body []byte) (*entities.
 			user.Email = member.Value
 		case member.Name == "user_expiration":
 			user.UserExpiration = member.Value
+		case member.Name == "prop_static_ip":
+			user.IPAddress = member.Value
 		case member.Name == "prop_superuser":
 			if member.Value == "true" {
 				user.Role = entities.UserRoleAdmin
@@ -652,6 +663,8 @@ func (c *UserClient) parseAllUsersResponse(body []byte) ([]*entities.User, error
 				user.Email = data.Value
 			case data.Name == "user_expiration":
 				user.UserExpiration = data.Value
+			case data.Name == "prop_static_ip":
+				user.IPAddress = data.Value
 			case data.Name == "prop_superuser":
 				if data.Value == "true" {
 					user.Role = entities.UserRoleAdmin

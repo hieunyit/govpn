@@ -90,6 +90,26 @@ func (u *userUsecaseImpl) CreateUser(ctx context.Context, user *entities.User) e
 		user.AccessControl = accessControl
 	}
 
+	// Assign or validate user IP
+	if user.IPAssignMode == "" {
+		user.IPAssignMode = entities.IPAssignModeDynamic
+	}
+
+	switch user.IPAssignMode {
+	case entities.IPAssignModeDynamic:
+		ip, err := u.assignDynamicIP(ctx, user.GroupName)
+		if err != nil {
+			return errors.InternalServerError("Failed to assign IP", err)
+		}
+		user.IPAddress = ip
+	case entities.IPAssignModeStatic:
+		if err := u.validateStaticIP(ctx, user.GroupName, user.IPAddress, ""); err != nil {
+			return errors.BadRequest("Invalid static IP", err)
+		}
+	default:
+		return errors.BadRequest("Invalid IP assign mode", nil)
+	}
+
 	if err := u.userRepo.Create(ctx, user); err != nil {
 		return errors.InternalServerError("Failed to create user", err)
 	}
@@ -179,7 +199,10 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 
 	// FIXED LOGIC: Create update entity with only provided fields
 	updateUser := &entities.User{
-		Username: user.Username, // Required for identification
+		Username:     user.Username, // Required for identification
+		GroupName:    existingUser.GroupName,
+		IPAddress:    existingUser.IPAddress,
+		IPAssignMode: existingUser.IPAssignMode,
 	}
 
 	// Partial update: Only update fields that are provided
@@ -221,6 +244,32 @@ func (u *userUsecaseImpl) UpdateUser(ctx context.Context, user *entities.User) e
 		logger.Log.WithField("username", user.Username).
 			WithField("groupName", user.GroupName).
 			Debug("Updating group name")
+	}
+
+	if user.IPAssignMode != "" {
+		updateUser.IPAssignMode = user.IPAssignMode
+	}
+
+	if user.IPAddress != "" {
+		updateUser.IPAddress = user.IPAddress
+	}
+
+	// Handle IP assignment/validation
+	if updateUser.IPAssignMode != "" {
+		switch updateUser.IPAssignMode {
+		case entities.IPAssignModeDynamic:
+			ip, err := u.assignDynamicIP(ctx, updateUser.GroupName)
+			if err != nil {
+				return errors.InternalServerError("Failed to assign IP", err)
+			}
+			updateUser.IPAddress = ip
+		case entities.IPAssignModeStatic:
+			if err := u.validateStaticIP(ctx, updateUser.GroupName, updateUser.IPAddress, user.Username); err != nil {
+				return errors.BadRequest("Invalid static IP", err)
+			}
+		default:
+			return errors.BadRequest("Invalid IP assign mode", nil)
+		}
 	}
 
 	// Update user in repository
@@ -697,4 +746,144 @@ func (u *userUsecaseImpl) validatePasswordComplexity(password string) error {
 	}
 
 	return nil
+}
+
+// assignDynamicIP picks an available IP from group's subnets
+func (u *userUsecaseImpl) assignDynamicIP(ctx context.Context, groupName string) (string, error) {
+	group, err := u.groupRepo.GetByName(ctx, groupName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get group: %w", err)
+	}
+
+	var subnets []*net.IPNet
+	for _, s := range group.GroupSubnet {
+		_, cidr, err := net.ParseCIDR(s)
+		if err == nil {
+			subnets = append(subnets, cidr)
+		}
+	}
+	if len(subnets) == 0 {
+		return "", fmt.Errorf("group has no subnet")
+	}
+
+	var ranges []ipRange
+	for _, r := range group.GroupRange {
+		if pr, err := parseIPRange(r); err == nil {
+			ranges = append(ranges, pr)
+		}
+	}
+
+	users, err := u.userRepo.List(ctx, &entities.UserFilter{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list users: %w", err)
+	}
+	used := map[string]bool{}
+	for _, usr := range users {
+		if usr.IPAddress != "" {
+			used[usr.IPAddress] = true
+		}
+	}
+
+	for _, subnet := range subnets {
+		ip := subnet.IP.To4()
+		maskSize, bits := subnet.Mask.Size()
+		total := uint32(1) << uint32(bits-maskSize)
+		start := ipToUint32(ip)
+		for i := uint32(1); i < total-1; i++ {
+			candidate := uint32ToIP(start + i)
+			ipStr := candidate.String()
+			if used[ipStr] || ipInRanges(candidate, ranges) {
+				continue
+			}
+			return ipStr, nil
+		}
+	}
+	return "", fmt.Errorf("no available IP")
+}
+
+// validateStaticIP checks if IP is valid for group and not used
+func (u *userUsecaseImpl) validateStaticIP(ctx context.Context, groupName, ipStr, exclude string) error {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return fmt.Errorf("invalid IP")
+	}
+
+	group, err := u.groupRepo.GetByName(ctx, groupName)
+	if err != nil {
+		return fmt.Errorf("failed to get group: %w", err)
+	}
+
+	var inSubnet bool
+	for _, s := range group.GroupSubnet {
+		_, cidr, err := net.ParseCIDR(s)
+		if err == nil && cidr.Contains(ip) {
+			inSubnet = true
+			break
+		}
+	}
+	if !inSubnet {
+		return fmt.Errorf("ip not in group subnet")
+	}
+
+	for _, r := range group.GroupRange {
+		pr, err := parseIPRange(r)
+		if err == nil && ipInRange(ip, pr) {
+			return fmt.Errorf("ip within restricted range")
+		}
+	}
+
+	users, err := u.userRepo.List(ctx, &entities.UserFilter{})
+	if err != nil {
+		return fmt.Errorf("failed to list users: %w", err)
+	}
+	for _, usr := range users {
+		if usr.Username == exclude {
+			continue
+		}
+		if usr.IPAddress == ipStr {
+			return fmt.Errorf("ip already in use")
+		}
+	}
+	return nil
+}
+
+type ipRange struct {
+	start net.IP
+	end   net.IP
+}
+
+func parseIPRange(r string) (ipRange, error) {
+	parts := strings.Split(r, "-")
+	if len(parts) != 2 {
+		return ipRange{}, fmt.Errorf("invalid range")
+	}
+	start := net.ParseIP(strings.TrimSpace(parts[0]))
+	end := net.ParseIP(strings.TrimSpace(parts[1]))
+	if start == nil || end == nil {
+		return ipRange{}, fmt.Errorf("invalid ip in range")
+	}
+	return ipRange{start: start, end: end}, nil
+}
+
+func ipToUint32(ip net.IP) uint32 {
+	ip = ip.To4()
+	return uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
+}
+
+func uint32ToIP(i uint32) net.IP {
+	return net.IPv4(byte(i>>24), byte(i>>16), byte(i>>8), byte(i))
+}
+
+func ipInRange(ip net.IP, r ipRange) bool {
+	v := ipToUint32(ip)
+	return v >= ipToUint32(r.start) && v <= ipToUint32(r.end)
+}
+
+func ipInRanges(ip net.IP, ranges []ipRange) bool {
+	for _, r := range ranges {
+		if ipInRange(ip, r) {
+			return true
+		}
+	}
+	return false
 }
