@@ -34,7 +34,7 @@ func NewSearchHandler(searchUsecase usecases.SearchUsecase) *SearchHandler {
 // @Param request body dto.AdvancedUserSearchRequest true "Advanced search criteria"
 // @Success 200 {object} dto.AdvancedUserSearchResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/search/users [post]
+// @Router /api/openvpn/search/users [post]
 func (h *SearchHandler) AdvancedUserSearch(c *gin.Context) {
 	var req dto.AdvancedUserSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -102,7 +102,7 @@ func (h *SearchHandler) AdvancedUserSearch(c *gin.Context) {
 // @Param request body dto.AdvancedGroupSearchRequest true "Advanced search criteria"
 // @Success 200 {object} dto.AdvancedGroupSearchResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/search/groups [post]
+// @Router /api/openvpn/search/groups [post]
 func (h *SearchHandler) AdvancedGroupSearch(c *gin.Context) {
 	var req dto.AdvancedGroupSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -173,7 +173,7 @@ func (h *SearchHandler) AdvancedGroupSearch(c *gin.Context) {
 // @Param request body dto.SavedSearchRequest true "Search to save"
 // @Success 201 {object} dto.SavedSearchResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/search/saved [post]
+// @Router /api/openvpn/search/saved [post]
 func (h *SearchHandler) SaveSearch(c *gin.Context) {
 	var req dto.SavedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -228,7 +228,7 @@ func (h *SearchHandler) SaveSearch(c *gin.Context) {
 // @Param searchType query string false "Filter by search type" Enums(users, groups)
 // @Param includePublic query boolean false "Include public saved searches"
 // @Success 200 {array} dto.SavedSearchResponse
-// @Router /api/search/saved [get]
+// @Router /api/openvpn/search/saved [get]
 func (h *SearchHandler) GetSavedSearches(c *gin.Context) {
 	// Get user from context
 	username, exists := c.Get("username")
@@ -275,7 +275,7 @@ func (h *SearchHandler) GetSavedSearches(c *gin.Context) {
 // @Success 200 {object} dto.AdvancedUserSearchResponse "User search results"
 // @Success 200 {object} dto.AdvancedGroupSearchResponse "Group search results"
 // @Failure 404 {object} dto.ErrorResponse
-// @Router /api/search/saved/{searchId}/execute [get]
+// @Router /api/openvpn/search/saved/{searchId}/execute [get]
 func (h *SearchHandler) ExecuteSavedSearch(c *gin.Context) {
 	searchId := c.Param("searchId")
 	if searchId == "" {
@@ -334,7 +334,7 @@ func (h *SearchHandler) ExecuteSavedSearch(c *gin.Context) {
 // @Param searchId path string true "Saved search ID"
 // @Success 200 {object} dto.MessageResponse
 // @Failure 404 {object} dto.ErrorResponse
-// @Router /api/search/saved/{searchId} [delete]
+// @Router /api/openvpn/search/saved/{searchId} [delete]
 func (h *SearchHandler) DeleteSavedSearch(c *gin.Context) {
 	searchId := c.Param("searchId")
 	if searchId == "" {
@@ -382,7 +382,7 @@ func (h *SearchHandler) DeleteSavedSearch(c *gin.Context) {
 // @Param request body dto.SearchSuggestionsRequest true "Search suggestions criteria"
 // @Success 200 {object} dto.SearchSuggestionsResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/search/suggestions [post]
+// @Router /api/openvpn/search/suggestions [post]
 func (h *SearchHandler) GetSearchSuggestions(c *gin.Context) {
 	var req dto.SearchSuggestionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -438,7 +438,7 @@ func (h *SearchHandler) GetSearchSuggestions(c *gin.Context) {
 // @Param type query string false "Search type" Enums(users, groups, all) default(all)
 // @Param limit query int false "Result limit" default(20)
 // @Success 200 {object} map[string]interface{} "Quick search results"
-// @Router /api/search/quick [get]
+// @Router /api/openvpn/search/quick [get]
 func (h *SearchHandler) QuickSearch(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
@@ -486,7 +486,7 @@ func (h *SearchHandler) QuickSearch(c *gin.Context) {
 // @Produce json
 // @Param period query string false "Analytics period" Enums(day, week, month) default(week)
 // @Success 200 {object} map[string]interface{} "Search analytics data"
-// @Router /api/search/analytics [get]
+// @Router /api/openvpn/search/analytics [get]
 func (h *SearchHandler) GetSearchAnalytics(c *gin.Context) {
 	period := c.DefaultQuery("period", "week")
 
@@ -530,7 +530,7 @@ func (h *SearchHandler) GetSearchAnalytics(c *gin.Context) {
 // @Param format query string false "Export format" Enums(csv, xlsx, json) default(csv)
 // @Param request body dto.AdvancedUserSearchRequest true "Search criteria for export"
 // @Success 200 {file} file "Exported search results"
-// @Router /api/search/export [post]
+// @Router /api/openvpn/search/export [post]
 func (h *SearchHandler) ExportSearchResults(c *gin.Context) {
 	format := c.DefaultQuery("format", "csv")
 

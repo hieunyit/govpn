@@ -36,7 +36,7 @@ func NewDisconnectHandler(disconnectUsecase usecases.DisconnectUsecase) *Disconn
 // @Failure 400 {object} dto.ErrorResponse "Bad request - validation error or no valid users"
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized - invalid or missing authentication"
 // @Failure 500 {object} dto.ErrorResponse "Internal server error - failed to disconnect users"
-// @Router /api/bulk/users/disconnect [post]
+// @Router /api/openvpn/bulk/users/disconnect [post]
 func (h *DisconnectHandler) BulkDisconnectUsers(c *gin.Context) {
 	var req dto.BulkDisconnectUsersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -105,7 +105,7 @@ func (h *DisconnectHandler) BulkDisconnectUsers(c *gin.Context) {
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized - invalid or missing authentication"
 // @Failure 404 {object} dto.ErrorResponse "User not found in system"
 // @Failure 500 {object} dto.ErrorResponse "Internal server error - failed to disconnect user"
-// @Router /api/users/{username}/disconnect [post]
+// @Router /api/openvpn/users/{username}/disconnect [post]
 func (h *DisconnectHandler) DisconnectUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {

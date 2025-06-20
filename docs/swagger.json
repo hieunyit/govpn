@@ -18,7 +18,7 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
-        "/api/bulk/groups/actions": {
+        "/api/openvpn/bulk/groups/actions": {
             "post": {
                 "security": [
                     {
@@ -63,7 +63,7 @@
                 }
             }
         },
-        "/api/bulk/groups/create": {
+        "/api/openvpn/bulk/groups/create": {
             "post": {
                 "security": [
                     {
@@ -108,7 +108,7 @@
                 }
             }
         },
-        "/api/bulk/groups/import": {
+        "/api/openvpn/bulk/groups/import": {
             "post": {
                 "security": [
                     {
@@ -174,7 +174,7 @@
                 }
             }
         },
-        "/api/bulk/groups/template": {
+        "/api/openvpn/bulk/groups/template": {
             "get": {
                 "security": [
                     {
@@ -212,7 +212,7 @@
                 }
             }
         },
-        "/api/bulk/users/actions": {
+        "/api/openvpn/bulk/users/actions": {
             "post": {
                 "security": [
                     {
@@ -257,7 +257,7 @@
                 }
             }
         },
-        "/api/bulk/users/create": {
+        "/api/openvpn/bulk/users/create": {
             "post": {
                 "security": [
                     {
@@ -308,7 +308,7 @@
                 }
             }
         },
-        "/api/bulk/users/disconnect": {
+        "/api/openvpn/bulk/users/disconnect": {
             "post": {
                 "security": [
                     {
@@ -377,7 +377,7 @@
                 }
             }
         },
-        "/api/bulk/users/extend": {
+        "/api/openvpn/bulk/users/extend": {
             "post": {
                 "security": [
                     {
@@ -422,7 +422,7 @@
                 }
             }
         },
-        "/api/bulk/users/import": {
+        "/api/openvpn/bulk/users/import": {
             "post": {
                 "security": [
                     {
@@ -494,7 +494,7 @@
                 }
             }
         },
-        "/api/bulk/users/template": {
+        "/api/openvpn/bulk/users/template": {
             "get": {
                 "security": [
                     {
@@ -532,7 +532,7 @@
                 }
             }
         },
-        "/api/cache/flush": {
+        "/api/openvpn/cache/flush": {
             "delete": {
                 "security": [
                     {
@@ -565,7 +565,7 @@
                 }
             }
         },
-        "/api/cache/flush/category": {
+        "/api/openvpn/cache/flush/category": {
             "delete": {
                 "security": [
                     {
@@ -614,7 +614,7 @@
                 }
             }
         },
-        "/api/cache/health": {
+        "/api/openvpn/cache/health": {
             "get": {
                 "security": [
                     {
@@ -640,7 +640,7 @@
                 }
             }
         },
-        "/api/cache/stats": {
+        "/api/openvpn/cache/stats": {
             "get": {
                 "security": [
                     {
@@ -666,7 +666,7 @@
                 }
             }
         },
-        "/api/cache/status": {
+        "/api/openvpn/cache/status": {
             "get": {
                 "security": [
                     {
@@ -692,7 +692,7 @@
                 }
             }
         },
-        "/api/cache/warmup": {
+        "/api/openvpn/cache/warmup": {
             "post": {
                 "security": [
                     {
@@ -725,7 +725,7 @@
                 }
             }
         },
-        "/api/config/network": {
+        "/api/openvpn/config/network": {
             "get": {
                 "security": [
                     {
@@ -774,7 +774,7 @@
                 }
             }
         },
-        "/api/config/server/info": {
+        "/api/openvpn/config/server/info": {
             "get": {
                 "security": [
                     {
@@ -823,7 +823,7 @@
                 }
             }
         },
-        "/api/groups": {
+        "/api/openvpn/groups": {
             "get": {
                 "security": [
                     {
@@ -948,7 +948,7 @@
                 }
             }
         },
-        "/api/groups/{groupName}": {
+        "/api/openvpn/groups/{groupName}": {
             "get": {
                 "security": [
                     {
@@ -1094,7 +1094,7 @@
                 }
             }
         },
-        "/api/groups/{groupName}/{action}": {
+        "/api/openvpn/groups/{groupName}/{action}": {
             "put": {
                 "security": [
                     {
@@ -1150,7 +1150,7 @@
                 }
             }
         },
-        "/api/search/analytics": {
+        "/api/openvpn/search/analytics": {
             "get": {
                 "security": [
                     {
@@ -1190,7 +1190,7 @@
                 }
             }
         },
-        "/api/search/export": {
+        "/api/openvpn/search/export": {
             "post": {
                 "security": [
                     {
@@ -1241,7 +1241,7 @@
                 }
             }
         },
-        "/api/search/groups": {
+        "/api/openvpn/search/groups": {
             "post": {
                 "security": [
                     {
@@ -1286,7 +1286,7 @@
                 }
             }
         },
-        "/api/search/quick": {
+        "/api/openvpn/search/quick": {
             "get": {
                 "security": [
                     {
@@ -1340,7 +1340,7 @@
                 }
             }
         },
-        "/api/search/saved": {
+        "/api/openvpn/search/saved": {
             "get": {
                 "security": [
                     {
@@ -1429,7 +1429,7 @@
                 }
             }
         },
-        "/api/search/saved/{searchId}": {
+        "/api/openvpn/search/saved/{searchId}": {
             "delete": {
                 "security": [
                     {
@@ -1466,7 +1466,7 @@
                 }
             }
         },
-        "/api/search/saved/{searchId}/execute": {
+        "/api/openvpn/search/saved/{searchId}/execute": {
             "get": {
                 "security": [
                     {
@@ -1520,7 +1520,7 @@
                 }
             }
         },
-        "/api/search/suggestions": {
+        "/api/openvpn/search/suggestions": {
             "post": {
                 "security": [
                     {
@@ -1565,7 +1565,7 @@
                 }
             }
         },
-        "/api/search/users": {
+        "/api/openvpn/search/users": {
             "post": {
                 "security": [
                     {
@@ -1610,7 +1610,7 @@
                 }
             }
         },
-        "/api/users": {
+        "/api/openvpn/users": {
             "get": {
                 "security": [
                     {
@@ -1851,7 +1851,7 @@
                 }
             }
         },
-        "/api/users/expirations": {
+        "/api/openvpn/users/expirations": {
             "get": {
                 "security": [
                     {
@@ -1898,7 +1898,7 @@
                 }
             }
         },
-        "/api/users/{username}": {
+        "/api/openvpn/users/{username}": {
             "get": {
                 "security": [
                     {
@@ -2029,7 +2029,7 @@
                 }
             }
         },
-        "/api/users/{username}/disconnect": {
+        "/api/openvpn/users/{username}/disconnect": {
             "post": {
                 "security": [
                     {
@@ -2111,7 +2111,7 @@
                 }
             }
         },
-        "/api/users/{username}/{action}": {
+        "/api/openvpn/users/{username}/{action}": {
             "put": {
                 "security": [
                     {
@@ -2175,7 +2175,7 @@
                 }
             }
         },
-        "/api/vpn/status": {
+        "/api/openvpn/vpn/status": {
             "get": {
                 "security": [
                     {

@@ -42,7 +42,7 @@ func NewUserHandler(userUsecase usecases.UserUsecase, xmlrpcClient *xmlrpc.Clien
 // @Success 201 {object} dto.MessageResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 409 {object} dto.ErrorResponse
-// @Router /api/users [post]
+// @Router /api/openvpn/users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -118,7 +118,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // @Param username path string true "Username"
 // @Success 200 {object} dto.UserResponse
 // @Failure 404 {object} dto.ErrorResponse
-// @Router /api/users/{username} [get]
+// @Router /api/openvpn/users/{username} [get]
 func (h *UserHandler) GetUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
@@ -154,7 +154,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 // @Success 200 {object} dto.MessageResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 404 {object} dto.ErrorResponse
-// @Router /api/users/{username} [put]
+// @Router /api/openvpn/users/{username} [put]
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
@@ -232,7 +232,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 // @Param username path string true "Username"
 // @Success 200 {object} dto.MessageResponse
 // @Failure 404 {object} dto.ErrorResponse
-// @Router /api/users/{username} [delete]
+// @Router /api/openvpn/users/{username} [delete]
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
@@ -269,7 +269,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 // @Param request body dto.ChangePasswordRequest false "Required only for change-password action"
 // @Success 200 {object} dto.MessageResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/users/{username}/{action} [put]
+// @Router /api/openvpn/users/{username}/{action} [put]
 func (h *UserHandler) UserAction(c *gin.Context) {
 	username := c.Param("username")
 	action := c.Param("action")
@@ -411,7 +411,7 @@ func (h *UserHandler) UserAction(c *gin.Context) {
 // @Param caseSensitive query boolean false "Case sensitive search" default(false)
 // @Success 200 {object} dto.UserListResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/users [get]
+// @Router /api/openvpn/users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
 	var filter dto.UserFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -483,7 +483,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 // @Param includeExpired query bool false "Include already expired users" default(false)
 // @Success 200 {object} dto.UserExpirationsResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/users/expirations [get]
+// @Router /api/openvpn/users/expirations [get]
 func (h *UserHandler) GetUserExpirations(c *gin.Context) {
 	daysStr := c.DefaultQuery("days", "7")
 	days, err := strconv.Atoi(daysStr)

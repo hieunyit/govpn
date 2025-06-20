@@ -119,7 +119,7 @@ func (r *RouterUpdated) setupProtectedRoutes(router *gin.Engine) {
 		protected.GET("/auth/validate", r.authHandler.ValidateToken)
 
 		// API routes
-		api := protected.Group("/api")
+		api := protected.Group("/api/openvpn")
 		{
 			// =================== EXISTING USER ROUTES ===================
 			// ✅ FIX: Register both with and without trailing slash to handle both cases
@@ -303,66 +303,66 @@ func (r *RouterUpdated) apiInfo(c *gin.Context) {
 				"validate": "GET /auth/validate",
 			},
 			"users": gin.H{
-				"create":      "POST /api/users",
-				"list":        "GET /api/users",
-				"get":         "GET /api/users/{username}",
-				"update":      "PUT /api/users/{username}",
-				"delete":      "DELETE /api/users/{username}",
-				"action":      "PUT /api/users/{username}/{action}",
-				"expirations": "GET /api/users/expirations",
-				"disconnect":  "POST /api/users/{username}/disconnect",
+				"create":      "POST /api/openvpn/users",
+				"list":        "GET /api/openvpn/users",
+				"get":         "GET /api/openvpn/users/{username}",
+				"update":      "PUT /api/openvpn/users/{username}",
+				"delete":      "DELETE /api/openvpn/users/{username}",
+				"action":      "PUT /api/openvpn/users/{username}/{action}",
+				"expirations": "GET /api/openvpn/users/expirations",
+				"disconnect":  "POST /api/openvpn/users/{username}/disconnect",
 			},
 			"groups": gin.H{
-				"create": "POST /api/groups",
-				"list":   "GET /api/groups",
-				"get":    "GET /api/groups/{groupName}",
-				"update": "PUT /api/groups/{groupName}",
-				"delete": "DELETE /api/groups/{groupName}",
-				"action": "PUT /api/groups/{groupName}/{action}",
+				"create": "POST /api/openvpn/groups",
+				"list":   "GET /api/openvpn/groups",
+				"get":    "GET /api/openvpn/groups/{groupName}",
+				"update": "PUT /api/openvpn/groups/{groupName}",
+				"delete": "DELETE /api/openvpn/groups/{groupName}",
+				"action": "PUT /api/openvpn/groups/{groupName}/{action}",
 			},
 			// NEW: Bulk operations endpoints
 			"bulk_operations": gin.H{
 				"users": gin.H{
-					"bulk_create":     "POST /api/bulk/users/create",
-					"bulk_actions":    "POST /api/bulk/users/actions",
-					"bulk_extend":     "POST /api/bulk/users/extend",
-					"import":          "POST /api/bulk/users/import",
-					"template":        "GET /api/bulk/users/template",
-					"bulk_disconnect": "POST /api/bulk/users/disconnect",
+					"bulk_create":     "POST /api/openvpn/bulk/users/create",
+					"bulk_actions":    "POST /api/openvpn/bulk/users/actions",
+					"bulk_extend":     "POST /api/openvpn/bulk/users/extend",
+					"import":          "POST /api/openvpn/bulk/users/import",
+					"template":        "GET /api/openvpn/bulk/users/template",
+					"bulk_disconnect": "POST /api/openvpn/bulk/users/disconnect",
 				},
 				"groups": gin.H{
-					"bulk_create":  "POST /api/bulk/groups/create",
-					"bulk_actions": "POST /api/bulk/groups/actions",
-					"import":       "POST /api/bulk/groups/import",
-					"template":     "GET /api/bulk/groups/template",
+					"bulk_create":  "POST /api/openvpn/bulk/groups/create",
+					"bulk_actions": "POST /api/openvpn/bulk/groups/actions",
+					"import":       "POST /api/openvpn/bulk/groups/import",
+					"template":     "GET /api/openvpn/bulk/groups/template",
 				},
 			},
 			// NEW: Advanced search endpoints
 			"advanced_search": gin.H{
-				"user_search":    "POST /api/search/users",
-				"group_search":   "POST /api/search/groups",
-				"quick_search":   "GET /api/search/quick",
-				"suggestions":    "POST /api/search/suggestions",
-				"export_results": "POST /api/search/export",
-				"analytics":      "GET /api/search/analytics",
+				"user_search":    "POST /api/openvpn/search/users",
+				"group_search":   "POST /api/openvpn/search/groups",
+				"quick_search":   "GET /api/openvpn/search/quick",
+				"suggestions":    "POST /api/openvpn/search/suggestions",
+				"export_results": "POST /api/openvpn/search/export",
+				"analytics":      "GET /api/openvpn/search/analytics",
 				"saved_searches": gin.H{
-					"save":    "POST /api/search/saved",
-					"list":    "GET /api/search/saved",
-					"execute": "GET /api/search/saved/{id}/execute",
-					"delete":  "DELETE /api/search/saved/{id}",
+					"save":    "POST /api/openvpn/search/saved",
+					"list":    "GET /api/openvpn/search/saved",
+					"execute": "GET /api/openvpn/search/saved/{id}/execute",
+					"delete":  "DELETE /api/openvpn/search/saved/{id}",
 				},
 			},
 			"vpn_status": gin.H{
-				"get_status": "GET /api/vpn/status",
+				"get_status": "GET /api/openvpn/vpn/status",
 			},
 			"config": gin.H{
-				"server_info":  "GET /api/config/server/info",
-				"network_info": "GET /api/config/network",
+				"server_info":  "GET /api/openvpn/config/server/info",
+				"network_info": "GET /api/openvpn/config/network",
 			},
 			// NEW: Cache management endpoints
 			"cache_management": gin.H{
-				"get_status": "GET /api/cache/status",
-				"flush_all":  "DELETE /api/cache/flush",
+				"get_status": "GET /api/openvpn/cache/status",
+				"flush_all":  "DELETE /api/openvpn/cache/flush",
 			},
 		},
 		"documentation": "/swagger/index.html",

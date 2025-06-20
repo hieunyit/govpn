@@ -34,7 +34,7 @@ func NewCacheHandler(cache *redis.Client, userRepo repositories.UserRepository, 
 // @Tags Cache
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /api/cache/status [get]
+// @Router /api/openvpn/cache/status [get]
 // @Security BearerAuth
 func (h *CacheHandler) GetCacheStatus(c *gin.Context) {
 	logger.Log.Info("Getting enhanced cache status")
@@ -90,17 +90,17 @@ func (h *CacheHandler) GetCacheStatus(c *gin.Context) {
 		// Add cache categories
 		response["cached_endpoints"] = gin.H{
 			"users": []string{
-				"GET /api/users/{username}",
-				"GET /api/users (with/without filters)",
-				"GET /api/users/expirations",
+				"GET /api/openvpn/users/{username}",
+				"GET /api/openvpn/users (with/without filters)",
+				"GET /api/openvpn/users/expirations",
 			},
 			"groups": []string{
-				"GET /api/groups/{groupName}",
-				"GET /api/groups (with/without filters)",
+				"GET /api/openvpn/groups/{groupName}",
+				"GET /api/openvpn/groups (with/without filters)",
 			},
 			"config": []string{
-				"GET /api/config/server/info",
-				"GET /api/config/network",
+				"GET /api/openvpn/config/server/info",
+				"GET /api/openvpn/config/network",
 			},
 		}
 	}
@@ -115,7 +115,7 @@ func (h *CacheHandler) GetCacheStatus(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
-// @Router /api/cache/flush [delete]
+// @Router /api/openvpn/cache/flush [delete]
 // @Security BearerAuth
 func (h *CacheHandler) FlushCache(c *gin.Context) {
 	logger.Log.Info("Flushing all cache data")
@@ -157,7 +157,7 @@ func (h *CacheHandler) FlushCache(c *gin.Context) {
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
-// @Router /api/cache/flush/category [delete]
+// @Router /api/openvpn/cache/flush/category [delete]
 // @Security BearerAuth
 func (h *CacheHandler) FlushCacheCategory(c *gin.Context) {
 	category := c.Query("category")
@@ -240,7 +240,7 @@ func (h *CacheHandler) FlushCacheCategory(c *gin.Context) {
 // @Tags Cache
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /api/cache/stats [get]
+// @Router /api/openvpn/cache/stats [get]
 // @Security BearerAuth
 func (h *CacheHandler) GetCacheStats(c *gin.Context) {
 	logger.Log.Info("Getting detailed cache statistics")
@@ -283,7 +283,7 @@ func (h *CacheHandler) GetCacheStats(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
-// @Router /api/cache/warmup [post]
+// @Router /api/openvpn/cache/warmup [post]
 // @Security BearerAuth
 func (h *CacheHandler) WarmUpCache(c *gin.Context) {
 	logger.Log.Info("Starting cache warmup")
@@ -352,7 +352,7 @@ func (h *CacheHandler) WarmUpCache(c *gin.Context) {
 // @Tags Cache
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /api/cache/health [get]
+// @Router /api/openvpn/cache/health [get]
 // @Security BearerAuth
 func (h *CacheHandler) CacheHealthCheck(c *gin.Context) {
 	health := gin.H{

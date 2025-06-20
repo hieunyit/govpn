@@ -285,7 +285,7 @@ type ExportResponse struct {
 	Size        int64     `json:"size" example:"15024"`
 	RecordCount int       `json:"recordCount" example:"150"`
 	Format      string    `json:"format" example:"csv"`
-	DownloadURL string    `json:"downloadUrl,omitempty" example:"/api/exports/download/abc123"`
+	DownloadURL string    `json:"downloadUrl,omitempty" example:"/api/openvpn/exports/download/abc123"`
 	ExportedAt  time.Time `json:"exportedAt" example:"2024-01-15T14:30:22Z"`
 }
 

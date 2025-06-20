@@ -38,7 +38,7 @@ func NewBulkHandler(bulkUsecase usecases.BulkUsecase, xmlrpcClient *xmlrpc.Clien
 // @Success 201 {object} dto.BulkCreateUsersResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 413 {object} dto.ErrorResponse "Request too large"
-// @Router /api/bulk/users/create [post]
+// @Router /api/openvpn/bulk/users/create [post]
 func (h *BulkHandler) BulkCreateUsers(c *gin.Context) {
 	var req dto.BulkCreateUsersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -91,7 +91,7 @@ func (h *BulkHandler) BulkCreateUsers(c *gin.Context) {
 // @Param request body dto.BulkUserActionsRequest true "Bulk user actions data"
 // @Success 200 {object} dto.BulkActionResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/bulk/users/actions [post]
+// @Router /api/openvpn/bulk/users/actions [post]
 func (h *BulkHandler) BulkUserActions(c *gin.Context) {
 	var req dto.BulkUserActionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -147,7 +147,7 @@ func (h *BulkHandler) BulkUserActions(c *gin.Context) {
 // @Param request body dto.BulkUserExtendRequest true "Bulk user extension data"
 // @Success 200 {object} dto.BulkActionResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/bulk/users/extend [post]
+// @Router /api/openvpn/bulk/users/extend [post]
 func (h *BulkHandler) BulkExtendUsers(c *gin.Context) {
 	var req dto.BulkUserExtendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -206,7 +206,7 @@ func (h *BulkHandler) BulkExtendUsers(c *gin.Context) {
 // @Success 200 {object} dto.ImportResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 413 {object} dto.ErrorResponse "File too large"
-// @Router /api/bulk/users/import [post]
+// @Router /api/openvpn/bulk/users/import [post]
 func (h *BulkHandler) ImportUsers(c *gin.Context) {
 	// Parse multipart form
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil { // 32MB max
@@ -285,7 +285,7 @@ func (h *BulkHandler) ImportUsers(c *gin.Context) {
 // @Param request body dto.BulkCreateGroupsRequest true "Bulk group creation data"
 // @Success 201 {object} dto.BulkCreateGroupsResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/bulk/groups/create [post]
+// @Router /api/openvpn/bulk/groups/create [post]
 func (h *BulkHandler) BulkCreateGroups(c *gin.Context) {
 	var req dto.BulkCreateGroupsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -338,7 +338,7 @@ func (h *BulkHandler) BulkCreateGroups(c *gin.Context) {
 // @Param request body dto.BulkGroupActionsRequest true "Bulk group actions data"
 // @Success 200 {object} dto.BulkGroupActionResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/bulk/groups/actions [post]
+// @Router /api/openvpn/bulk/groups/actions [post]
 func (h *BulkHandler) BulkGroupActions(c *gin.Context) {
 	var req dto.BulkGroupActionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -397,7 +397,7 @@ func (h *BulkHandler) BulkGroupActions(c *gin.Context) {
 // @Param override formData boolean false "Override existing groups"
 // @Success 200 {object} dto.ImportResponse
 // @Failure 400 {object} dto.ErrorResponse
-// @Router /api/bulk/groups/import [post]
+// @Router /api/openvpn/bulk/groups/import [post]
 func (h *BulkHandler) ImportGroups(c *gin.Context) {
 	// Parse multipart form
 	if err := c.Request.ParseMultipartForm(16 << 20); err != nil { // 16MB max for groups
@@ -474,7 +474,7 @@ func (h *BulkHandler) ImportGroups(c *gin.Context) {
 // @Produce application/octet-stream
 // @Param format query string false "Template format" Enums(csv, xlsx) default(csv)
 // @Success 200 {file} file "User template file"
-// @Router /api/bulk/users/template [get]
+// @Router /api/openvpn/bulk/users/template [get]
 func (h *BulkHandler) ExportUserTemplate(c *gin.Context) {
 	format := c.DefaultQuery("format", "csv")
 
@@ -501,7 +501,7 @@ func (h *BulkHandler) ExportUserTemplate(c *gin.Context) {
 // @Produce application/octet-stream
 // @Param format query string false "Template format" Enums(csv, xlsx) default(csv)
 // @Success 200 {file} file "Group template file"
-// @Router /api/bulk/groups/template [get]
+// @Router /api/openvpn/bulk/groups/template [get]
 func (h *BulkHandler) ExportGroupTemplate(c *gin.Context) {
 	format := c.DefaultQuery("format", "csv")
 

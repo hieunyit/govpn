@@ -1520,7 +1520,7 @@ info:
   title: GoVPN API Enhanced with Advanced Redis Caching
   version: 1.2.0
 paths:
-  /api/bulk/groups/actions:
+  /api/openvpn/bulk/groups/actions:
     post:
       consumes:
       - application/json
@@ -1548,7 +1548,7 @@ paths:
       summary: Bulk group actions
       tags:
       - Bulk Operations
-  /api/bulk/groups/create:
+  /api/openvpn/bulk/groups/create:
     post:
       consumes:
       - application/json
@@ -1576,7 +1576,7 @@ paths:
       summary: Bulk create groups
       tags:
       - Bulk Operations
-  /api/bulk/groups/import:
+  /api/openvpn/bulk/groups/import:
     post:
       consumes:
       - multipart/form-data
@@ -1619,7 +1619,7 @@ paths:
       summary: Import groups from file
       tags:
       - Bulk Operations
-  /api/bulk/groups/template:
+  /api/openvpn/bulk/groups/template:
     get:
       description: Download template file for group import
       parameters:
@@ -1643,7 +1643,7 @@ paths:
       summary: Export group template
       tags:
       - Bulk Operations
-  /api/bulk/users/actions:
+  /api/openvpn/bulk/users/actions:
     post:
       consumes:
       - application/json
@@ -1671,7 +1671,7 @@ paths:
       summary: Bulk user actions
       tags:
       - Bulk Operations
-  /api/bulk/users/create:
+  /api/openvpn/bulk/users/create:
     post:
       consumes:
       - application/json
@@ -1703,7 +1703,7 @@ paths:
       summary: Bulk create users
       tags:
       - Bulk Operations
-  /api/bulk/users/disconnect:
+  /api/openvpn/bulk/users/disconnect:
     post:
       consumes:
       - application/json
@@ -1745,7 +1745,7 @@ paths:
       summary: Bulk disconnect multiple VPN users
       tags:
       - Bulk Operations
-  /api/bulk/users/extend:
+  /api/openvpn/bulk/users/extend:
     post:
       consumes:
       - application/json
@@ -1773,7 +1773,7 @@ paths:
       summary: Bulk extend user expiration
       tags:
       - Bulk Operations
-  /api/bulk/users/import:
+  /api/openvpn/bulk/users/import:
     post:
       consumes:
       - multipart/form-data
@@ -1820,7 +1820,7 @@ paths:
       summary: Import users from file
       tags:
       - Bulk Operations
-  /api/bulk/users/template:
+  /api/openvpn/bulk/users/template:
     get:
       description: Download template file for user import
       parameters:
@@ -1844,7 +1844,7 @@ paths:
       summary: Export user template
       tags:
       - Bulk Operations
-  /api/cache/flush:
+  /api/openvpn/cache/flush:
     delete:
       description: Clear all cached data from Redis
       produces:
@@ -1865,7 +1865,7 @@ paths:
       summary: Flush cache
       tags:
       - Cache
-  /api/cache/flush/category:
+  /api/openvpn/cache/flush/category:
     delete:
       description: Clear specific categories of cached data
       parameters:
@@ -1897,7 +1897,7 @@ paths:
       summary: Flush specific cache categories
       tags:
       - Cache
-  /api/cache/health:
+  /api/openvpn/cache/health:
     get:
       description: Perform comprehensive cache health check
       produces:
@@ -1913,7 +1913,7 @@ paths:
       summary: Check cache health
       tags:
       - Cache
-  /api/cache/stats:
+  /api/openvpn/cache/stats:
     get:
       description: Get detailed cache statistics and metrics
       produces:
@@ -1929,7 +1929,7 @@ paths:
       summary: Get cache statistics
       tags:
       - Cache
-  /api/cache/status:
+  /api/openvpn/cache/status:
     get:
       description: Get Redis cache status, connection health, and statistics
       produces:
@@ -1945,7 +1945,7 @@ paths:
       summary: Get cache status
       tags:
       - Cache
-  /api/cache/warmup:
+  /api/openvpn/cache/warmup:
     post:
       description: Pre-load frequently accessed data into cache
       produces:
@@ -1966,7 +1966,7 @@ paths:
       summary: Warm up cache
       tags:
       - Cache
-  /api/config/network:
+  /api/openvpn/config/network:
     get:
       description: Get comprehensive network configuration including client networks,
         VPN daemon settings, routing, and NAT configuration
@@ -1995,7 +1995,7 @@ paths:
       summary: Get network configuration
       tags:
       - Configuration
-  /api/config/server/info:
+  /api/openvpn/config/server/info:
     get:
       description: Get basic server information including node type, ports, and cluster
         configuration
@@ -2024,7 +2024,7 @@ paths:
       summary: Get server information
       tags:
       - Configuration
-  /api/groups:
+  /api/openvpn/groups:
     get:
       consumes:
       - application/json
@@ -2100,7 +2100,7 @@ paths:
       summary: Create a new group
       tags:
       - Groups
-  /api/groups/{groupName}:
+  /api/openvpn/groups/{groupName}:
     delete:
       description: Delete group by name
       parameters:
@@ -2190,7 +2190,7 @@ paths:
       summary: Update group
       tags:
       - Groups
-  /api/groups/{groupName}/{action}:
+  /api/openvpn/groups/{groupName}/{action}:
     put:
       consumes:
       - application/json
@@ -2226,7 +2226,7 @@ paths:
       summary: Perform action on group
       tags:
       - Groups
-  /api/search/analytics:
+  /api/openvpn/search/analytics:
     get:
       description: Get analytics about search usage and patterns
       parameters:
@@ -2252,7 +2252,7 @@ paths:
       summary: Get search analytics
       tags:
       - Advanced Search
-  /api/search/export:
+  /api/openvpn/search/export:
     post:
       consumes:
       - application/json
@@ -2285,7 +2285,7 @@ paths:
       summary: Export search results
       tags:
       - Advanced Search
-  /api/search/groups:
+  /api/openvpn/search/groups:
     post:
       consumes:
       - application/json
@@ -2313,7 +2313,7 @@ paths:
       summary: Advanced group search
       tags:
       - Advanced Search
-  /api/search/quick:
+  /api/openvpn/search/quick:
     get:
       description: Perform a quick text search across users and groups
       parameters:
@@ -2349,7 +2349,7 @@ paths:
       summary: Quick search
       tags:
       - Advanced Search
-  /api/search/saved:
+  /api/openvpn/search/saved:
     get:
       description: Get list of saved searches for current user
       parameters:
@@ -2405,7 +2405,7 @@ paths:
       summary: Save search query
       tags:
       - Advanced Search
-  /api/search/saved/{searchId}:
+  /api/openvpn/search/saved/{searchId}:
     delete:
       description: Delete a saved search
       parameters:
@@ -2428,7 +2428,7 @@ paths:
       summary: Delete saved search
       tags:
       - Advanced Search
-  /api/search/saved/{searchId}/execute:
+  /api/openvpn/search/saved/{searchId}/execute:
     get:
       description: Execute a previously saved search
       parameters:
@@ -2463,7 +2463,7 @@ paths:
       summary: Execute saved search
       tags:
       - Advanced Search
-  /api/search/suggestions:
+  /api/openvpn/search/suggestions:
     post:
       consumes:
       - application/json
@@ -2491,7 +2491,7 @@ paths:
       summary: Get search suggestions
       tags:
       - Advanced Search
-  /api/search/users:
+  /api/openvpn/search/users:
     post:
       consumes:
       - application/json
@@ -2519,7 +2519,7 @@ paths:
       summary: Advanced user search
       tags:
       - Advanced Search
-  /api/users:
+  /api/openvpn/users:
     get:
       description: Get a paginated list of users with comprehensive filtering options
       parameters:
@@ -2681,7 +2681,7 @@ paths:
       summary: Create a new user
       tags:
       - Users
-  /api/users/{username}:
+  /api/openvpn/users/{username}:
     delete:
       description: Delete a user and associated resources
       parameters:
@@ -2764,7 +2764,7 @@ paths:
       summary: Update user
       tags:
       - Users
-  /api/users/{username}/{action}:
+  /api/openvpn/users/{username}/{action}:
     put:
       consumes:
       - application/json
@@ -2806,7 +2806,7 @@ paths:
       summary: Perform user action
       tags:
       - Users
-  /api/users/{username}/disconnect:
+  /api/openvpn/users/{username}/disconnect:
     post:
       consumes:
       - application/json
@@ -2857,7 +2857,7 @@ paths:
       summary: Disconnect a single VPN user
       tags:
       - Users
-  /api/users/expirations:
+  /api/openvpn/users/expirations:
     get:
       description: Get users that will expire in the specified number of days with
         complete user details
@@ -2888,7 +2888,7 @@ paths:
       summary: Get expiring users with full information
       tags:
       - Users
-  /api/vpn/status:
+  /api/openvpn/vpn/status:
     get:
       description: Get detailed VPN server status including all connected users with
         their public IPs, connection times, countries, and traffic statistics

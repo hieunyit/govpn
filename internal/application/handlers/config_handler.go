@@ -29,7 +29,7 @@ func NewConfigHandler(configUsecase usecases.ConfigUsecase) *ConfigHandler {
 // @Success 200 {object} dto.SuccessResponse{data=dto.ServerInfoResponse} "Server information retrieved successfully"
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized - invalid or missing authentication"
 // @Failure 500 {object} dto.ErrorResponse "Internal server error - failed to retrieve server info"
-// @Router /api/config/server/info [get]
+// @Router /api/openvpn/config/server/info [get]
 func (h *ConfigHandler) GetServerInfo(c *gin.Context) {
 	logger.Log.Info("Getting server information")
 
@@ -72,7 +72,7 @@ func (h *ConfigHandler) GetServerInfo(c *gin.Context) {
 // @Success 200 {object} dto.SuccessResponse{data=dto.NetworkConfigResponse} "Network configuration retrieved successfully"
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized - invalid or missing authentication"
 // @Failure 500 {object} dto.ErrorResponse "Internal server error - failed to retrieve network config"
-// @Router /api/config/network [get]
+// @Router /api/openvpn/config/network [get]
 func (h *ConfigHandler) GetNetworkConfig(c *gin.Context) {
 	logger.Log.Info("Getting network configuration")
 

@@ -30,7 +30,7 @@ func NewVPNStatusHandler(vpnStatusUsecase usecases.VPNStatusUsecase) *VPNStatusH
 // @Success 200 {object} dto.SuccessResponse{data=dto.VPNStatusResponse} "Successful response with VPN status"
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized - invalid or missing authentication"
 // @Failure 500 {object} dto.ErrorResponse "Internal server error - failed to retrieve VPN status"
-// @Router /api/vpn/status [get]
+// @Router /api/openvpn/vpn/status [get]
 func (h *VPNStatusHandler) GetVPNStatus(c *gin.Context) {
 	logger.Log.Info("Getting comprehensive VPN status")
 
