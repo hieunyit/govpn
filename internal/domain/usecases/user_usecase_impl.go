@@ -406,16 +406,12 @@ func (u *userUsecaseImpl) GetExpiringUsers(ctx context.Context, days int) ([]str
 
 func (u *userUsecaseImpl) ListUsersWithCount(ctx context.Context, filter *entities.UserFilter) ([]*entities.User, int, error) {
 	// Get total count without pagination
-	totalFilter := &entities.UserFilter{
-		Username:   filter.Username,
-		Email:      filter.Email,
-		AuthMethod: filter.AuthMethod,
-		Role:       filter.Role,
-		GroupName:  filter.GroupName,
-		// No pagination params for count
-	}
+	totalFilter := *filter
+	totalFilter.Page = 0
+	totalFilter.Limit = 0
+	totalFilter.Offset = 0
 
-	allUsers, err := u.userRepo.List(ctx, totalFilter)
+	allUsers, err := u.userRepo.List(ctx, &totalFilter)
 	if err != nil {
 		return nil, 0, errors.InternalServerError("Failed to count users", err)
 	}
@@ -434,18 +430,12 @@ func (u *userUsecaseImpl) ListUsersWithTotal(ctx context.Context, filter *entiti
 	logger.Log.WithField("filter", filter).Debug("Listing users with total count")
 
 	// First get total count (without pagination)
-	totalFilter := &entities.UserFilter{
-		Username:   filter.Username,
-		Email:      filter.Email,
-		AuthMethod: filter.AuthMethod,
-		Role:       filter.Role,
-		GroupName:  filter.GroupName,
-		// Don't include pagination for total count
-		Page:  0,
-		Limit: 0,
-	}
+	totalFilter := *filter
+	totalFilter.Page = 0
+	totalFilter.Limit = 0
+	totalFilter.Offset = 0
 
-	allUsers, err := u.userRepo.List(ctx, totalFilter)
+	allUsers, err := u.userRepo.List(ctx, &totalFilter)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get total user count")
 		return nil, 0, errors.InternalServerError("Failed to get total user count", err)
